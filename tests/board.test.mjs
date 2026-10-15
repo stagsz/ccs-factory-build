@@ -275,3 +275,48 @@ test("formatJobList: sorts by createdAt ascending (stable), without touching the
   assert.equal(board.jobs, jobsRef);
   assert.deepEqual(board.jobs, before);
 });
+
+const historyJob = (history) => ({ id: "j-20261015-008", title: "History job", branch: "factory/j-20261015-008-history-job", history });
+
+test("formatJobHistory: header lines, aligned columns, empty note, no trailing whitespace", () => {
+  const job = historyJob([
+    { stage: "queued", at: "2026-10-15T10:00:00.000Z", note: "created from cli" },
+    { stage: "needs-human", at: "2026-10-15T11:00:00.000Z", note: "" },
+    { stage: "spec", at: "2026-10-15T12:00:00.000Z", note: "go" },
+  ]);
+  const expected = [
+    "j-20261015-008  History job",
+    "Branch: factory/j-20261015-008-history-job",
+    "",
+    "AT                        STAGE        NOTE",
+    "2026-10-15T10:00:00.000Z  queued       created from cli",
+    "2026-10-15T11:00:00.000Z  needs-human",
+    "2026-10-15T12:00:00.000Z  spec         go",
+  ].join("\n");
+  const text = B.formatJobHistory(job);
+  assert.equal(text, expected);
+  for (const line of text.split("\n")) assert.equal(line, line.trimEnd());
+  assert.ok(!text.endsWith("\n"));
+});
+
+test("formatJobHistory: sorts by at ascending (stable), without touching the job", () => {
+  const job = historyJob([
+    { stage: "build", at: "2026-10-15T12:00:00.000Z", note: "newest" },
+    { stage: "queued", at: "2026-10-14T09:00:00.000Z", note: "oldest" },
+    { stage: "spec", at: "2026-10-15T08:00:00.000Z", note: "tie first" },
+    { stage: "rework", at: "2026-10-15T08:00:00.000Z", note: "tie second" },
+  ]);
+  const before = structuredClone(job);
+  const historyRef = job.history;
+  const notes = B.formatJobHistory(job).split("\n").slice(4).map((l) => l.split(/\s{2,}/).pop());
+  assert.deepEqual(notes, ["oldest", "tie first", "tie second", "newest"]);
+  assert.equal(job.history, historyRef);
+  assert.deepEqual(job, before);
+});
+
+test("formatJobHistory: empty or missing history prints No history.", () => {
+  const expected = "j-20261015-008  History job\nBranch: factory/j-20261015-008-history-job\n\nNo history.";
+  assert.equal(B.formatJobHistory(historyJob([])), expected);
+  const { history, ...noHistory } = historyJob([]);
+  assert.equal(B.formatJobHistory(noHistory), expected);
+});
