@@ -80,9 +80,28 @@ test("SKILL.md tells the user what happens on a park, a full board, a short back
   assert.ok(skill.includes("No free slot (active: <ids>)."));
   assert.ok(skill.includes("Started <k> of <n>: <ids>."));
   assert.ok(skill.includes("it leaves the round but keeps its slot while it waits, and the other jobs carry on"));
-  assert.ok(skill.includes("exits non-zero without starting a merge"));
   assert.ok(skill.includes("its worktree (if any) was left in place"));
   assert.ok(skill.includes('wrap the path in double quotes (`git -C "<worktree>" ...`)'));
+});
+
+test("SKILL.md decides every failed git merge by MERGE_HEAD, not by git's message", () => {
+  const skill = read("skills", "factory", "SKILL.md");
+  assert.ok(skill.includes("whenever `git merge` exits non-zero"));
+  assert.ok(skill.includes("git rev-parse -q --verify MERGE_HEAD"));
+  assert.ok(skill.includes('git -C "<worktree>" rev-parse -q --verify MERGE_HEAD'));
+  assert.ok(skill.includes('git -C "<worktree>" merge --abort'));
+  assert.ok(skill.includes("conflict or rejected merge: <git line>"));
+  assert.ok(skill.includes("merge refused: <git line>"));
+  assert.ok(skill.includes("double quotes, `$` and backticks removed"));
+  assert.ok(skill.includes("If `git merge --abort` fails, stop and tell the user"));
+  assert.ok(skill.includes("and backslashes removed too"));
+  assert.ok(skill.includes("In either branch never go on to the tests or `merged`. If `git merge --abort` fails"));
+  assert.ok(skill.includes("do not resolve conflicts yourself. If the merge exits 0, run `node scripts/board.mjs rework"));
+  assert.ok(!skill.includes("In both cases never go on to the tests"));
+  assert.ok(!skill.includes("If the merge reports conflicts"));
+  assert.ok(!skill.includes("conflicts with <mainBranch>"));
+  assert.ok(!skill.includes("merge refused: <git message>"));
+  assert.ok(!skill.includes("refused without starting"));
 });
 
 test("every configured reviewer and the approver work in the job's worktree", () => {
