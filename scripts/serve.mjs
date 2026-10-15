@@ -7,6 +7,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveJobFile } from "./lib/serve.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.PORT ?? 4317);
@@ -24,11 +25,7 @@ const server = http.createServer((req, res) => {
   let file = routes[url.pathname];
 
   // Job files: /jobs/<id>/<file>.md, read-only, confined to factory/jobs.
-  if (!file && url.pathname.startsWith("/jobs/")) {
-    const jobsDir = path.join(root, "factory", "jobs");
-    const candidate = path.resolve(jobsDir, "." + decodeURIComponent(url.pathname.slice(5)));
-    if (candidate.startsWith(jobsDir + path.sep) && candidate.endsWith(".md")) file = candidate;
-  }
+  if (!file) file = resolveJobFile(root, url.pathname);
 
   if (!file || !fs.existsSync(file)) {
     res.writeHead(404, { "content-type": "text/plain" });
