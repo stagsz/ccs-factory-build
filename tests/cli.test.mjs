@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +73,52 @@ test("risk floor overrides an approver who wants to merge", () => {
   const decision = JSON.parse(run("decide-merge", id, "package.json"));
   assert.equal(decision.action, "needs-human");
   assert.match(decision.why, /package\.json/);
+});
+
+const allCommands = ["init", "new", "next", "stage", "verdict", "decide-review", "rework", "risk", "decide-merge", "show", "validate", "help"];
+
+test("help, --help and -h print the same usage and exit 0 before init", () => {
+  const { root, run } = setup();
+  const outputs = ["help", "--help", "-h"].map((a) => run(a));
+  for (const o of outputs) {
+    assert.match(o, /^Usage: node scripts\/board\.mjs/);
+    for (const c of allCommands) assert.ok(o.includes(c), `usage is missing "${c}"`);
+  }
+  assert.equal(outputs[1], outputs[0]);
+  assert.equal(outputs[2], outputs[0]);
+  assert.equal(fs.existsSync(path.join(root, "factory", "board.json")), false);
+});
+
+test("help works in a directory with no factory/ folder and writes nothing to stderr", () => {
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), "ccs-factory-bare-"));
+  const r = spawnSync(process.execPath, [cli, "help"], { cwd: bare, encoding: "utf8" });
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, "");
+  assert.match(r.stdout, /^Usage: node scripts\/board\.mjs/);
+  assert.equal(fs.existsSync(path.join(bare, "factory")), false);
+});
+
+test("no command prints usage only and exits 2", () => {
+  const { run } = setup();
+  assert.throws(() => run(), (e) => e.status === 2 && /Usage:/.test(e.stdout) && !/Unknown command/.test(e.stdout));
+});
+
+test("unknown command prints the command list, then usage, and exits 2", () => {
+  const { run } = setup();
+  assert.throws(
+    () => run("bogus"),
+    (e) => {
+      if (e.status !== 2) return false;
+      const [first, ...rest] = e.stdout.split(/\r?\n/);
+      const m = /^Unknown command "bogus"\. Commands: (.+)$/.exec(first);
+      if (!m) return false;
+      const usage = rest.join("\n");
+      if (!/^Usage:/.test(usage)) return false;
+      // Drift guard: every key of `commands` must be documented in USAGE.
+      for (const name of m[1].split(", ")) assert.match(usage, new RegExp(`^  ${name}\\b`, "m"));
+      return true;
+    },
+  );
 });
 
 test("CLI reports illegal moves and missing agent output as errors", () => {

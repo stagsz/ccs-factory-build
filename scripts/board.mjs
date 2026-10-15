@@ -3,22 +3,27 @@
 // The orchestrator calls this for every write to factory/board.json.
 // Agents never call it; they write only their own file under factory/jobs/<id>/.
 //
-// Usage: node scripts/board.mjs <command> [args]
-//   init                                   create factory/board.json and factory/jobs/
-//   new "<title>" [--request "<text>"]     create a job, prints its id
-//   next                                   take the next "- [ ]" item from backlog.md
-//   stage <id> <stage> [--note "<text>"]   move a job (transition rules enforced)
-//   verdict <id> <reviewer>                read reviews/<reviewer>.md and record its VERDICT
-//   decide-review <id>                     print approve | rework | needs-human | pending
-//   rework <id> [--note "<text>"]          start a rework cycle (escalates when budget spent)
-//   risk <id> <file> [<file> ...]          deterministic risk floor for the changed files
-//   decide-merge <id> <file> [...]         read approval.md + risk floor, print merged | needs-human
-//   show [<id>]                            print the board or one job as JSON
-//   validate                               check board.json integrity
+// Usage: see USAGE below, or run `node scripts/board.mjs help`.
 
 import fs from "node:fs";
 import path from "node:path";
 import * as B from "./lib/board.mjs";
+
+const USAGE = `Usage: node scripts/board.mjs <command> [args]
+  init                                   create factory/board.json and factory/jobs/
+  new "<title>" [--request "<text>"]     create a job, prints its id
+  next                                   take the next "- [ ]" item from backlog.md
+  stage <id> <stage> [--note "<text>"]   move a job (transition rules enforced)
+  verdict <id> <reviewer>                read reviews/<reviewer>.md and record its VERDICT
+  decide-review <id>                     print approve | rework | needs-human | pending
+  rework <id> [--note "<text>"]          start a rework cycle (escalates when budget spent)
+  risk <id> <file> [<file> ...]          deterministic risk floor for the changed files
+  decide-merge <id> <file> [...]         read approval.md + risk floor, print merged | needs-human
+  show [<id>]                            print the board or one job as JSON
+  validate                               check board.json integrity
+  help (also --help, -h)                 print this usage`;
+
+const HELP = new Set(["help", "--help", "-h"]);
 
 const root = process.env.FACTORY_ROOT ? path.resolve(process.env.FACTORY_ROOT) : process.cwd();
 const P = B.paths(root);
@@ -147,8 +152,17 @@ const commands = {
 };
 
 const [cmd, ...args] = process.argv.slice(2);
-if (!cmd || !commands[cmd]) {
-  out(`Unknown command "${cmd ?? ""}". Commands: ${Object.keys(commands).join(", ")}`);
+if (HELP.has(cmd)) {
+  out(USAGE);
+  process.exit(0);
+}
+if (!cmd) {
+  out(USAGE);
+  process.exit(2);
+}
+if (!commands[cmd]) {
+  out(`Unknown command "${cmd}". Commands: ${Object.keys(commands).join(", ")}`);
+  out(USAGE);
   process.exit(2);
 }
 try {
