@@ -18,8 +18,9 @@ You do not write specs, code, reviews or approvals yourself. Each agent has one 
 | `/factory approve <job-id>` | Human approves a `needs-human` job: merge it |
 | `/factory rework <job-id> <note>` | Human sends a job back to the builder with a note |
 | `/factory status [<job-id>]` | Show the board, or one job's history |
+| `/factory approved [<job-id>]` | Export a merged job (default: the most recently merged) to the Obsidian vault in `export.obsidianDir` |
 
-Read the argument the user gave after `/factory` and pick the matching command. Anything that is not `next`, `approve`, `rework` or `status` is a feature request.
+Read the argument the user gave after `/factory` and pick the matching command by its exact first word. Anything that is not `next`, `approve`, `approved`, `rework` or `status` is a feature request. `approve` and `approved` are different commands, matched on the exact first word: `approve` merges a `needs-human` job; `approved` exports a `merged` job. Never treat one as the other.
 
 ## Before the first job
 
@@ -96,6 +97,8 @@ Never push main yourself; the record commit stays on local main. In `pr` mode, j
 **`/factory approve <id>`**: job must be `needs-human`. Merge per step 5's merge rules, then `stage <id> merged --note "human approved"` and run step 7. If tests fail on main after a `local` merge, run `git reset --keep ORIG_HEAD` (if it reports an error, stop and tell the user: do not run step 7, never retry with `--hard`). The job is already `needs-human`, so leave the stage as is (do not run `stage`; the board rejects `needs-human` to `needs-human`), then run step 7, then step 6.
 
 **`/factory rework <id> <note>`**: job must be `needs-human`. Switch to the job branch and run `git merge --no-edit <mainBranch>` so the branch carries the job's record commit from step 7 (without it the switch drops `factory/jobs/<id>/` and the current board). If the merge reports conflicts, run `git merge --abort`, switch back to `<mainBranch>` and tell the user; do not resolve conflicts yourself. Then run `node scripts/board.mjs rework <id> --note "<note>"` (a human rework grants a fresh budget), resume the builder with the note plus the latest reviews, then continue from step 4.
+
+**`/factory approved [<id>]`**: run `node scripts/board.mjs export <id>` (or `node scripts/board.mjs export` with no id to export the most recently merged job). On exit 0, report the export folder path it prints. On a non-zero exit, relay the error to the user without changing the board or git state. An export writes only to the vault, so no commit is made for an export.
 
 **`/factory status`**: `node scripts/board.mjs show` and summarise as a short table: id, title, stage, rework count. With an id, show that job's history.
 
