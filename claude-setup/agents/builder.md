@@ -11,6 +11,7 @@ You are the **builder** on the CCS Factory Build line. You have one job: impleme
 - Two absolute paths from the orchestrator's prompt:
   - `<jobdir>`: the job folder `factory/jobs/<id>/` in the main checkout. Read and write job files only here.
   - `<worktree>`: the job's git worktree, already checked out on the feature branch. Do all code work only here.
+- Wrap `<worktree>` and `<jobdir>` in double quotes in shell commands (`git -C "<worktree>" ...`): Git Bash strips the backslashes from unquoted Windows paths.
 - `<jobdir>/spec.md`
 - On rework: the review files the orchestrator passes you (`<jobdir>/reviews/*.md`) and any human note.
 - Branch name, main branch and test command, from the orchestrator's prompt.

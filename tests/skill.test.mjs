@@ -72,6 +72,19 @@ test("SKILL.md runs every job in its own worktree and never switches the main ch
   assert.ok(!skill.includes("One job at a time in this version"));
 });
 
+test("SKILL.md tells the user what happens on a park, a full board, a short backlog and a spec gate", () => {
+  const skill = read("skills", "factory", "SKILL.md");
+  const step6 = skill.slice(skill.indexOf("### 6. Park for a human"), skill.indexOf("### 7. Record the job"));
+  assert.ok(step6.includes("Work is on <branch> in <worktree>; the main checkout is on <current branch>."));
+  assert.ok(step6.includes("merges <mainBranch> into <branch> first"));
+  assert.ok(skill.includes("No free slot (active: <ids>)."));
+  assert.ok(skill.includes("Started <k> of <n>: <ids>."));
+  assert.ok(skill.includes("it leaves the round but keeps its slot while it waits, and the other jobs carry on"));
+  assert.ok(skill.includes("exits non-zero without starting a merge"));
+  assert.ok(skill.includes("its worktree (if any) was left in place"));
+  assert.ok(skill.includes('wrap the path in double quotes (`git -C "<worktree>" ...`)'));
+});
+
 test("every configured reviewer and the approver work in the job's worktree", () => {
   const config = JSON.parse(fs.readFileSync(path.join(source, "..", "factory", "config.json"), "utf8"));
   for (const name of [...config.reviewers, "approver"]) {
