@@ -185,3 +185,42 @@ test("slugify strips accents and symbols", () => {
   assert.equal(B.slugify("Göteborg Event-Scout: v2!!"), "goteborg-event-scout-v2");
   assert.equal(B.slugify("***"), "job");
 });
+
+test("formatJobList: empty board prints No jobs.", () => {
+  assert.equal(B.formatJobList(B.emptyBoard()), "No jobs.");
+});
+
+test("formatJobList: aligned columns, two-space gaps, no trailing whitespace", () => {
+  const board = B.emptyBoard();
+  board.jobs.push(
+    { id: "j-20261015-001", stage: "queued", rework: 0, title: "Short", createdAt: "2026-10-15T10:00:00.000Z" },
+    { id: "j-20261015-002", stage: "needs-human", rework: 12, title: "A much longer title here", createdAt: "2026-10-15T11:00:00.000Z" },
+    { id: "j-1", stage: "spec", rework: 3, title: "Mid title", createdAt: "2026-10-15T12:00:00.000Z" },
+  );
+  const expected = [
+    "ID              STAGE        REWORK  TITLE",
+    "j-20261015-001  queued       0       Short",
+    "j-20261015-002  needs-human  12      A much longer title here",
+    "j-1             spec         3       Mid title",
+  ].join("\n");
+  const text = B.formatJobList(board);
+  assert.equal(text, expected);
+  for (const line of text.split("\n")) assert.equal(line, line.trimEnd());
+  assert.ok(!text.endsWith("\n"));
+});
+
+test("formatJobList: sorts by createdAt ascending (stable), without touching the board", () => {
+  const board = B.emptyBoard();
+  board.jobs.push(
+    { id: "j-c", stage: "build", rework: 1, title: "Newest", createdAt: "2026-10-15T12:00:00.000Z" },
+    { id: "j-a", stage: "queued", rework: 0, title: "Oldest", createdAt: "2026-10-14T09:00:00.000Z" },
+    { id: "j-b1", stage: "spec", rework: 0, title: "Tie first", createdAt: "2026-10-15T08:00:00.000Z" },
+    { id: "j-b2", stage: "spec", rework: 0, title: "Tie second", createdAt: "2026-10-15T08:00:00.000Z" },
+  );
+  const before = structuredClone(board.jobs);
+  const jobsRef = board.jobs;
+  const ids = B.formatJobList(board).split("\n").slice(1).map((l) => l.split(/\s+/)[0]);
+  assert.deepEqual(ids, ["j-a", "j-b1", "j-b2", "j-c"]);
+  assert.equal(board.jobs, jobsRef);
+  assert.deepEqual(board.jobs, before);
+});
