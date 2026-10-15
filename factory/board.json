@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-15T19:34:49.274Z",
+  "updatedAt": "2026-10-15T19:49:09.767Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -447,6 +447,59 @@
           "stage": "merged",
           "at": "2026-10-15T19:34:49.273Z",
           "note": "9f0c061"
+        }
+      ]
+    },
+    {
+      "id": "j-20261015-009",
+      "title": "Test the dashboard server's job-file confinement",
+      "request": "scripts/serve.mjs serves `/jobs/<id>/<file>.md` and confines it to factory/jobs with an inline `path.resolve` + `startsWith` check that has no tests. Move that resolution into a pure, exported function (in scripts/lib/board.mjs or a new scripts/lib/serve.mjs) that takes the root and the URL pathname and returns the file path or null, and use it from serve.mjs. Add tests covering a normal job file, `..` traversal, percent-encoded traversal (`%2e%2e`, `%2f`), a non-.md file, a path to factory/jobs itself, and a malformed percent-encoding (which must return null, not throw). Behaviour for valid paths must not change.",
+      "source": "backlog",
+      "stage": "merged",
+      "branch": "factory/j-20261015-009-test-the-dashboard-server-s-job-file-con",
+      "rework": 0,
+      "risk": {
+        "level": "low",
+        "reasons": []
+      },
+      "verdicts": {
+        "ux-reviewer": "pass",
+        "ui-design-reviewer": "pass",
+        "code-reviewer": "pass",
+        "security-reviewer": "pass"
+      },
+      "createdAt": "2026-10-15T19:36:10.029Z",
+      "updatedAt": "2026-10-15T19:49:09.766Z",
+      "history": [
+        {
+          "stage": "queued",
+          "at": "2026-10-15T19:36:10.029Z",
+          "note": "created from backlog"
+        },
+        {
+          "stage": "spec",
+          "at": "2026-10-15T19:36:10.214Z",
+          "note": ""
+        },
+        {
+          "stage": "build",
+          "at": "2026-10-15T19:37:22.070Z",
+          "note": ""
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-15T19:41:24.854Z",
+          "note": ""
+        },
+        {
+          "stage": "approve",
+          "at": "2026-10-15T19:47:40.567Z",
+          "note": ""
+        },
+        {
+          "stage": "merged",
+          "at": "2026-10-15T19:49:09.766Z",
+          "note": "feeb4bd"
         }
       ]
     }
