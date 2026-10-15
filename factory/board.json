@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-15T20:29:13.164Z",
+  "updatedAt": "2026-10-15T20:30:35.906Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -561,7 +561,7 @@
       "title": "Export approved jobs to an Obsidian vault",
       "request": "Add a way to save finished factory jobs to the user's Obsidian vault. (1) New config key in factory/config.json, e.g. \"export\": { \"obsidianDir\": \"C:\\Users\\staff\\ObsidianVaults\\CCS Factory build\" } (null/absent = feature off; never hard-code the path in code, since the factory is installed into other repos). (2) New CLI command `node scripts/board.mjs export <id>` that copies the job's records (request.md, spec.md, build.md, reviews/*.md, approval.md, whichever exist) into a NEW folder inside obsidianDir named after the job's title (the build name), sanitised for Windows and Linux filenames (strip <>:\"/\\|?* and control chars, trim trailing dots/spaces). If that folder already exists for a different job, suffix it with the job id; re-exporting the same job overwrites its own folder. Also write an index note in that folder (e.g. README.md or <title>.md) with id, title, stage, branch, risk, verdicts and the stage history, plus Obsidian [[links]] to the copied files. Only jobs in stage merged may be exported; others exit non-zero with a clear message. Missing obsidianDir config exits non-zero with a clear message. Pure logic (folder-name sanitising, collision choice, index-note rendering) goes in scripts/lib/board.mjs with unit tests in tests/board.test.mjs; CLI tests in tests/cli.test.mjs using a temp dir as obsidianDir. USAGE line for the new command. (3) In claude-setup/skills/factory/SKILL.md add a human command `/factory approved [<id>]` (distinct from the existing `/factory approve <id>`): with an id, export that merged job; without one, export the most recently merged job. Add it to the Commands table. Update tests/skill.test.mjs if it asserts the command list. Zero runtime dependencies, node:path/node:fs only.",
       "source": "cli",
-      "stage": "needs-human",
+      "stage": "merged",
       "branch": "factory/j-20261015-011-export-approved-jobs-to-an-obsidian-vaul",
       "rework": 0,
       "risk": {
@@ -577,7 +577,7 @@
         "code-reviewer": "pass"
       },
       "createdAt": "2026-10-15T20:14:21.599Z",
-      "updatedAt": "2026-10-15T20:29:13.162Z",
+      "updatedAt": "2026-10-15T20:30:35.905Z",
       "history": [
         {
           "stage": "queued",
@@ -608,6 +608,11 @@
           "stage": "needs-human",
           "at": "2026-10-15T20:29:13.162Z",
           "note": "approver escalated: touches claude-setup/ and factory/config.json; writes outside repo"
+        },
+        {
+          "stage": "merged",
+          "at": "2026-10-15T20:30:35.905Z",
+          "note": "human approved"
         }
       ]
     }
