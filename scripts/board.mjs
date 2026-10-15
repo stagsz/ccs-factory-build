@@ -7,6 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import * as B from "./lib/board.mjs";
 
 const USAGE = `Usage: node scripts/board.mjs <command> [args]
@@ -24,6 +25,9 @@ const USAGE = `Usage: node scripts/board.mjs <command> [args]
   history <id>                           print one job's stage history, oldest first
   export [<id>]                          export a merged job (default: the most recently merged) to export.obsidianDir
   validate                               check board.json integrity
+  worktree <id>                          print the absolute path of a job's git worktree
+  slots                                  print active jobs against parallel.maxJobs and the free slots
+  preflight                              check git status: only in-flight jobs' factory records may be dirty
   help (also --help, -h)                 print this usage`;
 
 const HELP = new Set(["help", "--help", "-h"]);
@@ -221,6 +225,32 @@ const commands = {
       out(errors.map((e) => `- ${e}`).join("\n"));
       process.exitCode = 1;
     } else out("Board is valid.");
+  },
+
+  worktree([id]) {
+    if (!id) throw new Error("worktree needs a job id. Usage: node scripts/board.mjs worktree <id>");
+    const config = B.loadConfig(root);
+    B.findJob(B.loadBoard(root), id);
+    out(B.worktreePath(config, root, id));
+  },
+
+  slots() {
+    const config = B.loadConfig(root);
+    const { active, max, free } = B.capacity(B.loadBoard(root), config);
+    out(`active ${active.length}/${max}: ${active.length ? active.join(", ") : "none"}; free ${free}`);
+  },
+
+  preflight() {
+    const status = execFileSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const errors = B.preflightErrors(B.parseGitStatusZ(status), B.loadBoard(root));
+    if (errors.length) {
+      out(["Uncommitted changes outside in-flight factory records. Commit or remove them first:", ...errors.map((p) => `- ${p}`)].join("\n"));
+      process.exitCode = 1;
+    } else out("Clean apart from in-flight factory records.");
   },
 };
 

@@ -126,7 +126,7 @@ test("risk floor overrides an approver who wants to merge", () => {
   assert.match(decision.why, /package\.json/);
 });
 
-const allCommands = ["init", "new", "next", "stage", "verdict", "decide-review", "rework", "risk", "decide-merge", "show", "list", "history", "export", "validate", "help"];
+const allCommands = ["init", "new", "next", "stage", "verdict", "decide-review", "rework", "risk", "decide-merge", "show", "list", "history", "export", "validate", "worktree", "slots", "preflight", "help"];
 
 test("help, --help and -h print the same usage and exit 0 before init", () => {
   const { root, run } = setup();
@@ -479,4 +479,217 @@ test("export leaves board.json and the job folder byte-identical", () => {
 test("help lists export [<id>]", () => {
   const { run } = setup();
   assert.match(run("help"), /^  export \[<id>\]\s+export a merged job/m);
+});
+
+// ---------- parallel jobs: worktree, slots, preflight ----------
+// Git work happens only in temp repos under os.tmpdir(); never in this repo.
+
+function setParallel(root, parallel) {
+  const file = path.join(root, "factory", "config.json");
+  const config = JSON.parse(fs.readFileSync(file, "utf8"));
+  config.parallel = parallel;
+  fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
+}
+
+// Run a command with FACTORY_ROOT set and an unrelated cwd, as the orchestrator may.
+function runAt(root, ...args) {
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "ccs-factory-cwd-"));
+  try {
+    return spawnSync(process.execPath, [cli, ...args], {
+      cwd: elsewhere,
+      encoding: "utf8",
+      env: { ...process.env, FACTORY_ROOT: root },
+    });
+  } finally {
+    fs.rmSync(elsewhere, { recursive: true, force: true });
+  }
+}
+
+// A clean temp git repo on branch main holding the factory files, with .worktrees/ ignored.
+function gitEnv() {
+  const env = { ...process.env };
+  for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"]) delete env[k];
+  return env;
+}
+
+function gitRepo() {
+  const { root, run } = setup();
+  const git = (...args) =>
+    execFileSync("git", args, { cwd: root, encoding: "utf8", env: gitEnv(), stdio: ["ignore", "pipe", "pipe"] }).trim();
+  git("init", "-q", "-b", "main");
+  git("config", "user.email", "factory@example.invalid");
+  git("config", "user.name", "Factory Test");
+  git("config", "commit.gpgsign", "false");
+  git("config", "core.autocrlf", "false");
+  fs.writeFileSync(path.join(root, ".gitignore"), ".worktrees/\n");
+  fs.mkdirSync(path.join(root, "src"));
+  fs.writeFileSync(path.join(root, "src", "a.js"), "export const a = 1;\n");
+  run("init");
+  fs.writeFileSync(path.join(root, "factory", "jobs", ".gitkeep"), "");
+  git("add", ".gitignore", "src", "factory");
+  git("commit", "-q", "-m", "initial");
+  return { root, run, git };
+}
+
+function preflightRun(root) {
+  return spawnSync(process.execPath, [cli, "preflight"], { cwd: root, encoding: "utf8", env: gitEnv() });
+}
+
+test("worktree prints the absolute worktree path under .worktrees, honouring FACTORY_ROOT", () => {
+  const { root, run } = setup();
+  run("init");
+  const id = run("new", "Parallel", "job");
+  const printed = run("worktree", id);
+  assert.equal(printed, path.join(root, ".worktrees", id));
+  assert.ok(path.isAbsolute(printed));
+  assert.equal(path.basename(printed), id);
+  assert.equal(path.basename(path.dirname(printed)), ".worktrees");
+
+  const r = runAt(root, "worktree", id);
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), printed);
+
+  setParallel(root, { maxJobs: 1, worktreeDir: "trees" });
+  assert.equal(run("worktree", id), path.join(root, "trees", id));
+  assert.ok(!fs.existsSync(path.join(root, "trees")), "worktree only prints, it creates nothing");
+});
+
+test("worktree with an unknown or missing id exits 1", () => {
+  const { root, run } = setup();
+  run("init");
+  const r = spawnSync(process.execPath, [cli, "worktree", "j-nope"], { cwd: root, encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, "");
+  assert.match(r.stderr, /^error: No job with id j-nope\./);
+  const none = spawnSync(process.execPath, [cli, "worktree"], { cwd: root, encoding: "utf8" });
+  assert.equal(none.status, 1);
+  assert.match(none.stderr, /^error: worktree needs a job id/);
+});
+
+test("slots prints active jobs against the cap in the exact format", () => {
+  const { root, run } = setup();
+  run("init");
+  assert.equal(run("slots"), "active 0/1: none; free 1");
+  const first = run("new", "First");
+  const second = run("new", "Second");
+  const parked = run("new", "Parked");
+  for (const s of ["spec", "build", "review", "needs-human"]) run("stage", parked, s);
+  run("stage", first, "spec");
+  assert.equal(run("slots"), `active 2/1: ${first}, ${second}; free 0`);
+  setParallel(root, { maxJobs: 3, worktreeDir: ".worktrees" });
+  assert.equal(run("slots"), `active 2/3: ${first}, ${second}; free 1`);
+  const viaEnv = runAt(root, "slots");
+  assert.equal(viaEnv.status, 0);
+  assert.equal(viaEnv.stdout.trim(), `active 2/3: ${first}, ${second}; free 1`);
+  run("stage", first, "failed");
+  run("stage", second, "failed");
+  assert.equal(run("slots"), "active 0/3: none; free 3");
+});
+
+test("slots and validate reject a bad parallel.maxJobs", () => {
+  const { root, run } = setup();
+  run("init");
+  setParallel(root, { maxJobs: 0 });
+  const r = spawnSync(process.execPath, [cli, "slots"], { cwd: root, encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /config\.parallel\.maxJobs must be an integer >= 1/);
+  const v = spawnSync(process.execPath, [cli, "validate"], { cwd: root, encoding: "utf8" });
+  assert.equal(v.status, 1);
+  assert.equal(v.stdout.trim(), "- config.parallel.maxJobs must be an integer >= 1");
+});
+
+test("preflight passes with an in-flight job's records and fails on any other dirty path", () => {
+  const { root, run } = gitRepo();
+  try {
+    const clean = preflightRun(root);
+    assert.equal(clean.status, 0, clean.stderr);
+    assert.equal(clean.stdout.trim(), "Clean apart from in-flight factory records.");
+
+    const id = run("new", "In flight");
+    run("stage", id, "spec");
+    fs.writeFileSync(path.join(root, "factory", "jobs", id, "spec.md"), "# Spec\n");
+    const inFlight = preflightRun(root);
+    assert.equal(inFlight.status, 0, inFlight.stdout + inFlight.stderr);
+    assert.equal(inFlight.stdout.trim(), "Clean apart from in-flight factory records.");
+    const viaEnv = runAt(root, "preflight");
+    assert.equal(viaEnv.status, 0, viaEnv.stdout + viaEnv.stderr);
+
+    fs.writeFileSync(path.join(root, "src", "a.js"), "export const a = 2;\n");
+    const dirty = preflightRun(root);
+    assert.equal(dirty.status, 1);
+    const lines = dirty.stdout.trim().split(/\r?\n/);
+    assert.ok(lines.includes("- src/a.js"), dirty.stdout);
+    assert.ok(!lines.some((l) => l.includes("factory/")), "in-flight records are not listed");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("preflight flags the factory records once no job is active", () => {
+  const { root, run } = gitRepo();
+  try {
+    const id = run("new", "Ends");
+    run("stage", id, "failed");
+    const r = preflightRun(root);
+    assert.equal(r.status, 1);
+    const lines = r.stdout.trim().split(/\r?\n/);
+    assert.ok(lines.includes("- factory/board.json"), r.stdout);
+    assert.ok(lines.includes(`- factory/jobs/${id}/request.md`), r.stdout);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("preflight lists both paths of a staged rename", () => {
+  const { root, git } = gitRepo();
+  try {
+    git("mv", "src/a.js", "src/b.js");
+    const r = preflightRun(root);
+    assert.equal(r.status, 1);
+    const lines = r.stdout.trim().split(/\r?\n/);
+    assert.ok(lines.includes("- src/b.js"), r.stdout);
+    assert.ok(lines.includes("- src/a.js"), r.stdout);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a job worktree at the printed path keeps preflight clean when .worktrees/ is ignored", () => {
+  const { root, run, git } = gitRepo();
+  try {
+    const id = run("new", "Worktree job");
+    run("stage", id, "spec");
+    run("stage", id, "build");
+    const job = JSON.parse(run("show", id));
+    const wt = run("worktree", id);
+    git("worktree", "add", "-q", "-b", job.branch, wt, "main");
+    assert.equal(
+      execFileSync("git", ["-C", wt, "branch", "--show-current"], { encoding: "utf8", env: gitEnv() }).trim(),
+      job.branch,
+    );
+    assert.equal(git("branch", "--show-current"), "main", "the main checkout stays on main");
+    fs.writeFileSync(path.join(wt, "src", "a.js"), "export const a = 3;\n");
+    const r = preflightRun(root);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(r.stdout.trim(), "Clean apart from in-flight factory records.");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("preflight flags the worktree dir when git does not ignore it", () => {
+  const { root, run, git } = gitRepo();
+  try {
+    fs.writeFileSync(path.join(root, ".gitignore"), "");
+    git("commit", "-q", "-am", "stop ignoring worktrees");
+    const id = run("new", "Unignored");
+    run("stage", id, "spec");
+    const job = JSON.parse(run("show", id));
+    git("worktree", "add", "-q", "-b", job.branch, run("worktree", id), "main");
+    const r = preflightRun(root);
+    assert.equal(r.status, 1);
+    assert.ok(r.stdout.split(/\r?\n/).some((l) => l.startsWith("- .worktrees/")), r.stdout);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
