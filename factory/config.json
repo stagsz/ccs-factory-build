@@ -1,0 +1,40 @@
+{
+  "project": "CCS Factory Build",
+  "repo": {
+    "mainBranch": "main",
+    "branchPrefix": "factory/",
+    "testCommand": "npm test",
+    "lintCommand": null,
+    "buildCommand": null,
+    "mergeMode": "local"
+  },
+  "agents": {
+    "spec-writer": { "model": "opus" },
+    "builder": { "model": "opus" },
+    "security-reviewer": { "model": "opus" },
+    "ux-reviewer": { "model": "sonnet" },
+    "ui-design-reviewer": { "model": "sonnet" },
+    "code-reviewer": { "model": "sonnet" },
+    "approver": { "model": "opus" }
+  },
+  "reviewers": ["security-reviewer", "ux-reviewer", "ui-design-reviewer", "code-reviewer"],
+  "maxReworkCycles": 2,
+  "humanGates": {
+    "approveSpec": false
+  },
+  "risk": {
+    "maxFilesForLowRisk": 15,
+    "alwaysEscalatePaths": [
+      "**/auth/**",
+      "**/payments/**",
+      "**/migrations/**",
+      ".github/**",
+      ".claude/**",
+      "claude-setup/**",
+      "factory/config.json",
+      "package.json",
+      "package-lock.json",
+      "**/.env*"
+    ]
+  }
+}

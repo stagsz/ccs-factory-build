@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCS Factory Board</title>
+<style>
+  :root {
+    --bg: #f2f3f5; --panel: #ffffff; --fg: #1b1d22; --muted: #5f6571; --line: #d4d7dd;
+    --accent: #b25d0c; --ok: #1f8a4c; --warn: #b7791f; --bad: #c0392b; --info: #2f62d8;
+    --mono: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #121317; --panel: #1b1d23; --fg: #e8e9ec; --muted: #9aa0ab; --line: #343741;
+    --accent: #e8a35a; --ok: #4fc483; --warn: #e3b341; --bad: #f0786a; --info: #6f9bff;
+    color-scheme: dark; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--sans); }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 18px; }
+  .meta { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .counts { display: flex; gap: 14px; font-size: 13px; }
+  .counts b { font-variant-numeric: tabular-nums; }
+  main { display: grid; grid-template-columns: repeat(var(--cols), minmax(190px, 1fr)); gap: 10px; padding: 16px 20px; overflow-x: auto; }
+  .col { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-height: 160px; display: flex; flex-direction: column; }
+  .col h2 { margin: 0; padding: 10px 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+  .cards { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .card { text-align: left; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 6px; padding: 8px 10px; cursor: pointer; }
+  .card:hover, .card:focus-visible { border-color: var(--accent); outline: none; }
+  .card .id { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .card .title { font-weight: 600; margin: 2px 0 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+  .chip.pass { color: var(--ok); border-color: var(--ok); }
+  .chip.changes { color: var(--warn); border-color: var(--warn); }
+  .chip.block { color: var(--bad); border-color: var(--bad); }
+  .s-needs-human .card { border-left-color: var(--warn); }
+  .s-failed .card { border-left-color: var(--bad); }
+  .s-merged .card { border-left-color: var(--ok); }
+  .s-review .card, .s-rework .card { border-left-color: var(--info); }
+  .empty { color: var(--muted); font-size: 12.5px; padding: 6px 4px; }
+  dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--fg); width: min(640px, 94vw); padding: 0; }
+  dialog::backdrop { background: rgb(0 0 0 / .45); }
+  .dlg { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .dlg h3 { margin: 0; font-size: 17px; }
+  .dlg table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .dlg td { border-top: 1px solid var(--line); padding: 5px 6px; vertical-align: top; }
+  .dlg td:first-child { font-family: var(--mono); white-space: nowrap; }
+  .dlg td:nth-child(2) { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .files { display: flex; flex-wrap: wrap; gap: 6px; }
+  .files a { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  .err { color: var(--bad); padding: 8px 20px; }
+  button.close { align-self: flex-end; font: inherit; background: none; border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CCS Factory Board</h1>
+  <div class="counts" id="counts"></div>
+  <div class="meta" id="meta">Loading board...</div>
+</header>
+<div class="err" id="err" hidden></div>
+<main id="board"></main>
+<dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
+
+<script>
+  const STAGES = ["queued", "spec", "spec-approval", "build", "review", "rework", "approve", "needs-human", "merged", "failed"];
+  const LABEL = { "spec-approval": "spec approval", "needs-human": "needs human" };
+  let board = { jobs: [] };
+  let config = { reviewers: [] };
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const time = (iso) => iso ? new Date(iso).toLocaleString() : "never";
+
+  function render() {
+    const main = document.getElementById("board");
+    const active = STAGES.filter((s) => s !== "spec-approval" || board.jobs.some((j) => j.stage === s));
+    main.style.setProperty("--cols", active.length);
+    main.innerHTML = active.map((stage) => {
+      const jobs = board.jobs.filter((j) => j.stage === stage).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      const cards = jobs.map((j) => {
+        const chips = Object.entries(j.verdicts || {}).map(([r, v]) => `<span class="chip ${esc(v)}" title="${esc(r)}">${esc(r.replace(/-reviewer$/, ""))}</span>`).join("");
+        const rework = j.rework ? `<span class="chip">rework ${j.rework}/${config.maxReworkCycles ?? "?"}</span>` : "";
+        return `<button class="card" data-id="${esc(j.id)}"><div class="id">${esc(j.id)}</div><div class="title">${esc(j.title)}</div><div class="chips">${rework}${chips}</div></button>`;
+      }).join("") || `<div class="empty">No jobs</div>`;
+      return `<section class="col s-${stage}"><h2><span>${LABEL[stage] ?? stage}</span><span>${jobs.length}</span></h2><div class="cards">${cards}</div></section>`;
+    }).join("");
+
+    const open = board.jobs.filter((j) => !["merged", "failed"].includes(j.stage)).length;
+    const human = board.jobs.filter((j) => j.stage === "needs-human").length;
+    const merged = board.jobs.filter((j) => j.stage === "merged").length;
+    document.getElementById("counts").innerHTML = `<span><b>${open}</b> in progress</span><span><b>${human}</b> need you</span><span><b>${merged}</b> merged</span>`;
+    document.getElementById("meta").textContent = `Board updated ${time(board.updatedAt)} · refreshes every 3 s`;
+  }
+
+  function showJob(id) {
+    const j = board.jobs.find((x) => x.id === id);
+    if (!j) return;
+    const files = ["request.md", "spec.md", "build.md", ...(config.reviewers || []).map((r) => `reviews/${r}.md`), "approval.md"];
+    const hist = j.history.map((h) => `<tr><td>${esc(h.stage)}</td><td>${esc(time(h.at))}</td><td>${esc(h.note)}</td></tr>`).join("");
+    const risk = j.risk ? `<div>Risk floor: <b>${esc(j.risk.level)}</b>${j.risk.reasons?.length ? " · " + esc(j.risk.reasons.join("; ")) : ""}</div>` : "";
+    document.getElementById("dlgBody").innerHTML = `
+      <h3>${esc(j.title)}</h3>
+      <div class="meta">${esc(j.id)} · ${esc(j.branch)} · stage <b>${esc(j.stage)}</b> · rework ${j.rework}</div>
+      ${risk}
+      <div class="files">${files.map((f) => `<a href="/jobs/${encodeURIComponent(j.id)}/${f}" target="_blank" rel="noopener">${esc(f)}</a>`).join("")}</div>
+      <table>${hist}</table>
+      <button class="close" id="closeDlg">Close</button>`;
+    const dlg = document.getElementById("dlg");
+    dlg.showModal();
+    document.getElementById("closeDlg").onclick = () => dlg.close();
+  }
+
+  document.getElementById("board").addEventListener("click", (e) => {
+    const card = e.target.closest(".card");
+    if (card) showJob(card.dataset.id);
+  });
+
+  async function load() {
+    const err = document.getElementById("err");
+    try {
+      const [b, c] = await Promise.all([fetch("/board.json", { cache: "no-store" }), fetch("/config.json", { cache: "no-store" })]);
+      if (!b.ok) throw new Error(`board.json returned ${b.status}`);
+      board = await b.json();
+      if (c.ok) config = await c.json();
+      err.hidden = true;
+      render();
+    } catch (e) {
+      err.textContent = `Could not read the board: ${e.message}. Is "npm run dashboard" running from the repo root?`;
+      err.hidden = false;
+    }
+  }
+  load();
+  setInterval(load, 3000);
+</script>
+</body>
+</html>
