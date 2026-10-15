@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-15T21:18:24.798Z",
+  "updatedAt": "2026-10-15T21:45:06.041Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -688,6 +688,71 @@
           "stage": "merged",
           "at": "2026-10-15T21:18:24.797Z",
           "note": "human approved"
+        }
+      ]
+    },
+    {
+      "id": "j-20261015-013",
+      "title": "Decide merge failures by MERGE_HEAD, not git's message",
+      "request": "SKILL.md step 5 (`local` merge) tells a conflict from a refused merge by reading git's output. A merge a git hook rejects can fail after it started, leave MERGE_HEAD set, and then step 7's record commit would finish an untested merge. Change claude-setup/skills/factory/SKILL.md so that whenever `git merge` exits non-zero, the orchestrator runs `git rev-parse -q --verify MERGE_HEAD`: if it succeeds, run `git merge --abort` and park needs-human (conflict or rejected merge); if it fails, nothing started, so park needs-human as \"merge refused\". Never go on to tests or `merged` in either case. Apply the same rule to `/factory approve` (leave the stage as is) and to `/factory rework` (`git -C \"<worktree>\" rev-parse -q --verify MERGE_HEAD`, then `git -C \"<worktree>\" merge --abort`). Also: the `--note` must carry only git's first `error:`/`CONFLICT` line with double quotes, `$` and backticks removed. Pin the new wording in tests/skill.test.mjs. Do not edit .claude/.",
+      "source": "backlog",
+      "stage": "needs-human",
+      "branch": "factory/j-20261015-013-decide-merge-failures-by-merge-head-not",
+      "rework": 1,
+      "risk": {
+        "level": "high",
+        "reasons": [
+          "sensitive paths: claude-setup/skills/factory/SKILL.md"
+        ]
+      },
+      "verdicts": {
+        "security-reviewer": "pass",
+        "ux-reviewer": "pass",
+        "ui-design-reviewer": "pass",
+        "code-reviewer": "pass"
+      },
+      "createdAt": "2026-10-15T21:25:48.678Z",
+      "updatedAt": "2026-10-15T21:45:06.039Z",
+      "history": [
+        {
+          "stage": "queued",
+          "at": "2026-10-15T21:25:48.678Z",
+          "note": "created from backlog"
+        },
+        {
+          "stage": "spec",
+          "at": "2026-10-15T21:26:04.208Z",
+          "note": ""
+        },
+        {
+          "stage": "build",
+          "at": "2026-10-15T21:28:25.116Z",
+          "note": ""
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-15T21:33:57.576Z",
+          "note": ""
+        },
+        {
+          "stage": "rework",
+          "at": "2026-10-15T21:37:58.752Z",
+          "note": "SKILL.md wording: rework success path explicit, step 5 'in both cases' ambiguity, strip backslashes from note"
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-15T21:41:01.999Z",
+          "note": ""
+        },
+        {
+          "stage": "approve",
+          "at": "2026-10-15T21:43:37.969Z",
+          "note": ""
+        },
+        {
+          "stage": "needs-human",
+          "at": "2026-10-15T21:45:06.039Z",
+          "note": "approver escalated: changes claude-setup/ (orchestrator merge-failure handling)"
         }
       ]
     }
