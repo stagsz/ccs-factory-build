@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-15T17:45:26.079Z",
+  "updatedAt": "2026-10-15T18:11:45.347Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -211,6 +211,76 @@
           "stage": "merged",
           "at": "2026-10-15T17:45:26.078Z",
           "note": "8a75db2"
+        }
+      ]
+    },
+    {
+      "id": "j-20261015-005",
+      "title": "Commit factory records after each job",
+      "request": "The orchestrator leaves factory/board.json and factory/jobs/<id>/ uncommitted after a job, so the next job fails the clean-tree check. Add a final step to claude-setup/skills/factory/SKILL.md: after `stage <id> merged` (and after parking a job as needs-human or failed), commit factory/board.json, factory/backlog.md and factory/jobs/<id>/ on main with message \"factory: record <id>\". Keep agents forbidden from touching these files.",
+      "source": "backlog",
+      "stage": "merged",
+      "branch": "factory/j-20261015-005-commit-factory-records-after-each-job",
+      "rework": 1,
+      "risk": {
+        "level": "high",
+        "reasons": [
+          "sensitive paths: claude-setup/agents/builder.md, claude-setup/skills/factory/SKILL.md"
+        ]
+      },
+      "verdicts": {
+        "ui-design-reviewer": "pass",
+        "ux-reviewer": "pass",
+        "code-reviewer": "pass",
+        "security-reviewer": "pass"
+      },
+      "createdAt": "2026-10-15T17:47:52.525Z",
+      "updatedAt": "2026-10-15T18:11:45.346Z",
+      "history": [
+        {
+          "stage": "queued",
+          "at": "2026-10-15T17:47:52.525Z",
+          "note": "created from backlog"
+        },
+        {
+          "stage": "spec",
+          "at": "2026-10-15T17:48:00.953Z",
+          "note": ""
+        },
+        {
+          "stage": "build",
+          "at": "2026-10-15T17:49:31.725Z",
+          "note": ""
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-15T17:53:11.291Z",
+          "note": ""
+        },
+        {
+          "stage": "rework",
+          "at": "2026-10-15T17:55:40.573Z",
+          "note": "Handle failures: validate/git switch/reset --keep/rework merge conflicts; fix approve-rollback re-staging needs-human; reword no-push note for pr mode"
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-15T17:57:34.914Z",
+          "note": ""
+        },
+        {
+          "stage": "approve",
+          "at": "2026-10-15T18:00:43.644Z",
+          "note": ""
+        },
+        {
+          "stage": "needs-human",
+          "at": "2026-10-15T18:02:07.366Z",
+          "note": "approver escalated: touches claude-setup/** (always-escalate); changes orchestrator git flow on main; /factory rework change beyond spec"
+        },
+        {
+          "stage": "merged",
+          "at": "2026-10-15T18:11:45.346Z",
+          "note": "human approved (25ee2eb)"
         }
       ]
     }
