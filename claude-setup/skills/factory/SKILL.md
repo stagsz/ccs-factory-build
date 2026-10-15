@@ -55,7 +55,7 @@ The command prints the job id. Use it everywhere below as `<id>`. Read the branc
 - `node scripts/board.mjs stage <id> build`
 - Create the branch from main: `git switch -c <branch> <mainBranch>`
 - Spawn the **builder** agent. Prompt: job folder, branch name, test command, "implement spec.md, commit on the branch, write build.md".
-- When it returns, run the test command yourself. If tests fail, respawn the builder once with the failure output. If they still fail: `stage <id> failed --note "<reason>"` and stop.
+- When it returns, run the test command yourself. If tests fail, respawn the builder once with the failure output. If they still fail: `stage <id> failed --note "<reason>"`, run step 7, then stop.
 
 ### 4. Review (parallel)
 - `node scripts/board.mjs stage <id> review`
@@ -64,8 +64,8 @@ The command prints the job id. Use it everywhere below as `<id>`. Read the branc
 - For each reviewer: `node scripts/board.mjs verdict <id> <reviewer>`
 - Then `node scripts/board.mjs decide-review <id>` and act on the answer:
   - `approve` -> step 5
-  - `rework` -> `node scripts/board.mjs rework <id> --note "<one line summary of requested changes>"`. If the output says the job moved to `needs-human`, go to step 6. Otherwise resume the **builder** with every review file that is not `pass` as input, then back to step 4.
-  - `needs-human` -> `stage <id> needs-human --note "<why>"`, go to step 6.
+  - `rework` -> `node scripts/board.mjs rework <id> --note "<one line summary of requested changes>"`. If the output says the job moved to `needs-human`, run step 7, then step 6. Otherwise resume the **builder** with every review file that is not `pass` as input, then back to step 4.
+  - `needs-human` -> `stage <id> needs-human --note "<why>"`, run step 7, then step 6.
 
 Rework budget: `maxReworkCycles` (default 2). The board enforces it, you do not count by hand.
 
@@ -74,19 +74,28 @@ Rework budget: `maxReworkCycles` (default 2). The board enforces it, you do not 
 - Spawn the **approver** agent. Prompt: job folder, branch, "decide merge or escalate, write approval.md".
 - `node scripts/board.mjs decide-merge <id> <changed files...>` (same file list as step 4).
   - `merged`: merge per `repo.mergeMode`:
-    - `local`: `git switch <mainBranch> && git merge --no-ff <branch> -m "factory: <title> (<id>)"`, then run the test command on main. If it fails, `git merge --abort` is no longer possible, so `git reset --hard ORIG_HEAD`, then `stage <id> needs-human --note "tests failed on main after merge"`.
+    - `local`: `git switch <mainBranch> && git merge --no-ff <branch> -m "factory: <title> (<id>)"`, then run the test command on main. If it fails, `git merge --abort` is no longer possible, so `git reset --keep ORIG_HEAD` (it keeps the uncommitted factory records; `--hard` would throw them away), then `stage <id> needs-human --note "tests failed on main after merge"`, run step 7, then step 6.
     - `pr`: `git push -u origin <branch>` and `gh pr create --base <mainBranch> --head <branch> --title "<title>" --body-file factory/jobs/<id>/approval.md`.
-    Then `node scripts/board.mjs stage <id> merged --note "<merge commit or PR url>"`.
-  - `needs-human`: `stage <id> needs-human --note "<why from the output>"`, go to step 6.
+    Then `node scripts/board.mjs stage <id> merged --note "<merge commit or PR url>"` and run step 7 (in both `local` and `pr` mode).
+  - `needs-human`: `stage <id> needs-human --note "<why from the output>"`, run step 7, then step 6.
 
 ### 6. Park for a human
-Tell the user, in three lines or fewer: job id, title, why it needs them, and the two commands they can use (`/factory approve <id>` or `/factory rework <id> <note>`). Stop the loop for this job.
+Run this only after step 7 has recorded the job. Tell the user, in three lines or fewer: job id, title, why it needs them, and the two commands they can use (`/factory approve <id>` or `/factory rework <id> <note>`). Stop the loop for this job.
+
+### 7. Record the job
+Every end state (`merged`, `needs-human`, `failed`) runs this step, so the tree is clean for the next `/factory` run. Run in this order:
+1. `node scripts/board.mjs validate`. If it reports errors, stop and tell the user; do not commit.
+2. `git switch <mainBranch>` (skip if already on main). The job's factory records are uncommitted, so they come along.
+3. `git add factory/board.json factory/backlog.md factory/jobs/<id>`
+4. `git commit -m "factory: record <id>"`. Skip the commit when nothing is staged (`git diff --cached --quiet` exits 0).
+
+Do not push the record commit. It stays on local main.
 
 ## Human commands
 
-**`/factory approve <id>`**: job must be `needs-human`. Merge per step 5's merge rules, then `stage <id> merged --note "human approved"`.
+**`/factory approve <id>`**: job must be `needs-human`. Merge per step 5's merge rules, then `stage <id> merged --note "human approved"` and run step 7. If the merge rolls back, follow step 5's rollback path (step 7, then step 6).
 
-**`/factory rework <id> <note>`**: job must be `needs-human`. Run `node scripts/board.mjs rework <id> --note "<note>"` (a human rework grants a fresh budget), switch to the job branch, resume the builder with the note plus the latest reviews, then continue from step 4.
+**`/factory rework <id> <note>`**: job must be `needs-human`. Switch to the job branch and run `git merge --no-edit <mainBranch>` so the branch carries the job's record commit from step 7 (without it the switch drops `factory/jobs/<id>/` and the current board). Then run `node scripts/board.mjs rework <id> --note "<note>"` (a human rework grants a fresh budget), resume the builder with the note plus the latest reviews, then continue from step 4.
 
 **`/factory status`**: `node scripts/board.mjs show` and summarise as a short table: id, title, stage, rework count. With an id, show that job's history.
 
@@ -95,7 +104,8 @@ Tell the user, in three lines or fewer: job id, title, why it needs them, and th
 - Only you write `factory/board.json`, and only through `scripts/board.mjs`. If a command errors, read the message: it names the allowed transitions. Do not work around it.
 - Agents get context from files, not from this conversation. Every agent prompt includes the job folder path.
 - Never merge with failing tests. Never merge a job whose `decide-merge` says `needs-human`.
-- Never force-push, never rewrite main's history except the `ORIG_HEAD` rollback described above.
+- Never force-push, never rewrite main's history except the `git reset --keep ORIG_HEAD` rollback in step 5.
 - One job at a time in this version. Parallel jobs need git worktrees (see README roadmap).
-- Run `node scripts/board.mjs validate` after each job. If it reports errors, tell the user.
+- Only you commit `factory/board.json`, `factory/backlog.md` and `factory/jobs/`, and only in step 7. Agents never stage or commit them.
+- Step 7 runs `node scripts/board.mjs validate` after each job. If it reports errors, tell the user.
 - Keep the user posted with one line per stage change. The dashboard (`npm run dashboard`) shows the same board live.
