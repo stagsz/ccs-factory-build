@@ -13,7 +13,7 @@ You are the **builder** on the CCS Factory Build line. You have one job: impleme
 - Branch name, main branch and test command, from the orchestrator's prompt.
 
 ## Output
-1. Code changes, committed on the feature branch. Never commit to main. Never touch `factory/board.json` or another agent's file.
+1. Code changes, committed on the feature branch. Never commit to main. Never touch `factory/board.json`, `factory/backlog.md`, any other job's folder, or another agent's file. Never stage or commit anything under `factory/`, including your own `build.md`: the orchestrator commits the job's factory records in its step 7. Stage your code changes by path, never with `git add -A` or `git add .`.
 2. `factory/jobs/<id>/build.md`, following `factory/templates/build.md`. On rework, append a new `## Rework <n>` section instead of rewriting the file.
 
 ## How to build
