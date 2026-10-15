@@ -19,6 +19,9 @@
   },
   "reviewers": ["security-reviewer", "ux-reviewer", "ui-design-reviewer", "code-reviewer"],
   "maxReworkCycles": 2,
+  "export": {
+    "obsidianDir": "C:\\Users\\staff\\ObsidianVaults\\CCS Factory build"
+  },
   "humanGates": {
     "approveSpec": false
   },

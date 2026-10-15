@@ -336,3 +336,126 @@ export function formatJobHistory(job) {
   const lines = table.map((r) => [...widths.map((w, c) => r[c].padEnd(w)), r[2]].join("  ").trimEnd());
   return [...head, ...lines].join("\n");
 }
+
+// ---------- export ----------
+
+// The folder export.obsidianDir points at, or null when the feature is off
+// (export, obsidianDir absent, null or blank). Relative paths resolve against root.
+export function exportDir(config, root) {
+  const dir = config?.export?.obsidianDir;
+  if (typeof dir !== "string" || !dir.trim()) return null;
+  return path.resolve(root, dir);
+}
+
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+// Top-level records copied into the export. The index note is <folder>.md, so a
+// folder named after one of them would overwrite that record with the index.
+const EXPORT_RECORD_STEMS = /^(request|spec|build|approval)$/i;
+
+// A job title made safe as one folder name on Windows, Linux and in Obsidian links.
+export function exportFolderName(title, id) {
+  let name = String(title ?? "")
+    .replace(/[<>:"/\\|?*#^[\]\u0000-\u001f\u007f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100)
+    .replace(/[. ]+$/, "");
+  if (!name) return id;
+  // "con.txt" is as reserved as "con": put the "_" on the stem so the result is safe.
+  const reserved = WINDOWS_RESERVED.exec(name);
+  if (reserved) name = `${reserved[1]}_${reserved[2] ?? ""}`;
+  else if (EXPORT_RECORD_STEMS.test(name)) name += "_";
+  return name;
+}
+
+// owners: Map of existing folder name -> owning job id (null: not a factory export).
+export function chooseExportFolder(base, id, owners) {
+  if (!owners.has(base) || owners.get(base) === id) return base;
+  return `${base} (${id})`;
+}
+
+// The factory-job value from an index note's leading YAML frontmatter, or null.
+export function parseExportOwner(text) {
+  const fm = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(String(text ?? ""));
+  if (!fm) return null;
+  const line = /^factory-job:[ \t]*(.*?)[ \t]*\r?$/m.exec(fm[1]);
+  if (!line) return null;
+  const value = line[1].replace(/^(["'])(.*)\1$/, "$2").trim();
+  return value || null;
+}
+
+// The merged job with the latest "merged" history entry, or null.
+export function latestMergedJob(board) {
+  let best = null;
+  let bestAt = null;
+  for (const job of board.jobs ?? []) {
+    if (job.stage !== "merged") continue;
+    const at = (job.history ?? [])
+      .filter((h) => h.stage === "merged")
+      .reduce((max, h) => (String(h.at) > max ? String(h.at) : max), "");
+    if (best === null || at > bestAt) {
+      best = job;
+      bestAt = at;
+    }
+  }
+  return best;
+}
+
+const oneLine = (s) => String(s ?? "").replace(/\r\n|\r|\n/g, " ");
+const cell = (s) => oneLine(s).replace(/\|/g, "\\|");
+
+function exportLinkLabel(file) {
+  const stem = file.replace(/\.md$/i, "");
+  const fixed = { request: "Request", spec: "Spec", build: "Build report", approval: "Approval" };
+  if (Object.hasOwn(fixed, stem)) return fixed[stem];
+  if (stem.startsWith("reviews/")) return `Review: ${stem.slice("reviews/".length)}`;
+  return stem;
+}
+
+// The index note of an exported job. files: posix paths relative to the export folder.
+// Pure: sorts a copy of the history.
+export function renderExportIndex(job, folder, files) {
+  const risk = job.risk ? job.risk.level : "not assessed";
+  const reasons = job.risk?.reasons ?? [];
+  const verdicts = Object.entries(job.verdicts ?? {});
+  const byAt = (a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
+  const history = [...(job.history ?? [])].sort(byAt);
+  const lines = [
+    "---",
+    `factory-job: ${job.id}`,
+    `title: ${JSON.stringify(oneLine(job.title))}`,
+    `stage: ${job.stage}`,
+    `branch: ${JSON.stringify(oneLine(job.branch))}`,
+    `risk: ${risk}`,
+    "---",
+    "",
+    `# ${oneLine(job.title)}`,
+    "",
+    `- Id: ${job.id}`,
+    `- Title: ${oneLine(job.title)}`,
+    `- Stage: ${job.stage}`,
+    `- Branch: ${oneLine(job.branch)}`,
+    "",
+    "## Risk",
+    "",
+    job.risk ? `- Level: ${risk}` : "- not assessed",
+    ...(job.risk ? (reasons.length ? reasons.map((r) => `- Reason: ${oneLine(r)}`) : ["- Reasons: none"]) : []),
+    "",
+    "## Verdicts",
+    "",
+    ...(verdicts.length ? verdicts.map(([r, v]) => `- ${r}: ${v}`) : ["- none"]),
+    "",
+    "## History",
+    "",
+    "| At | Stage | Note |",
+    "|---|---|---|",
+    ...history.map((h) => `| ${cell(h.at)} | ${cell(h.stage)} | ${cell(h.note)} |`),
+    "",
+    "## Files",
+    "",
+    ...(files.length
+      ? files.map((f) => `- [[${folder}/${f.replace(/\.md$/i, "")}|${exportLinkLabel(f)}]]`)
+      : ["- none"]),
+  ];
+  return lines.join("\n") + "\n";
+}

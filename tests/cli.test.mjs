@@ -15,10 +15,20 @@ function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ccs-factory-"));
   fs.mkdirSync(path.join(root, "factory"), { recursive: true });
   fs.copyFileSync(realConfig, path.join(root, "factory", "config.json"));
+  // The real config names the user's vault. No test may export there: switch it off
+  // here, and export tests point it at a fresh temp dir with setVault().
+  setVault(root, null);
   fs.writeFileSync(path.join(root, "factory", "backlog.md"), "# Backlog\n- [ ] Health check :: Add GET /health\n");
   const run = (...args) =>
     execFileSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   return { root, run };
+}
+
+function setVault(root, dir) {
+  const file = path.join(root, "factory", "config.json");
+  const config = JSON.parse(fs.readFileSync(file, "utf8"));
+  config.export = { obsidianDir: dir };
+  fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
 }
 
 function writeReview(root, id, reviewer, verdict) {
@@ -116,7 +126,7 @@ test("risk floor overrides an approver who wants to merge", () => {
   assert.match(decision.why, /package\.json/);
 });
 
-const allCommands = ["init", "new", "next", "stage", "verdict", "decide-review", "rework", "risk", "decide-merge", "show", "list", "history", "validate", "help"];
+const allCommands = ["init", "new", "next", "stage", "verdict", "decide-review", "rework", "risk", "decide-merge", "show", "list", "history", "export", "validate", "help"];
 
 test("help, --help and -h print the same usage and exit 0 before init", () => {
   const { root, run } = setup();
@@ -247,4 +257,226 @@ test("CLI reports illegal moves and missing agent output as errors", () => {
   assert.throws(() => run("stage", id, "merged"), (e) => /cannot move from "queued" to "merged"/.test(e.stderr));
   for (const s of ["spec", "build", "review"]) run("stage", id, s);
   assert.throws(() => run("verdict", id, "code-reviewer"), (e) => /has not written its output/.test(e.stderr));
+});
+
+// ---------- export ----------
+// Every export test points export.obsidianDir at a fresh temp dir (or null) first.
+
+function freshVault() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "ccs-factory-vault-"));
+}
+
+// Drive a job to merged, writing the agent files a real run leaves behind.
+function mergeJob(root, run, title) {
+  const id = run("new", title);
+  const dir = path.join(root, "factory", "jobs", id);
+  run("stage", id, "spec");
+  fs.writeFileSync(path.join(dir, "spec.md"), `# Spec: ${title}\n`);
+  run("stage", id, "build");
+  fs.writeFileSync(path.join(dir, "build.md"), `# Build report: ${title}\n`);
+  run("stage", id, "review");
+  for (const r of reviewers) { writeReview(root, id, r, "pass"); run("verdict", id, r); }
+  run("stage", id, "approve");
+  fs.writeFileSync(path.join(dir, "approval.md"), "RISK: low\nDECISION: merge\n");
+  run("stage", id, "merged", "--note", "abc123");
+  return id;
+}
+
+function exportRun(root, ...args) {
+  return spawnSync(process.execPath, [cli, "export", ...args], { cwd: root, encoding: "utf8" });
+}
+
+function listTree(dir) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { recursive: true }).map((p) => p.split(path.sep).join("/")).sort();
+}
+
+test("export copies a merged job's records and writes a linked index note", () => {
+  const { root, run } = setup();
+  const vault = freshVault();
+  setVault(root, vault);
+  run("init");
+  const id = mergeJob(root, run, "Export me");
+  const printed = run("export", id);
+  const target = path.join(vault, "Export me");
+  assert.equal(printed, target);
+
+  const jobDir = path.join(root, "factory", "jobs", id);
+  const reviewFiles = [...reviewers].sort().map((r) => `reviews/${r}.md`);
+  const copied = ["request.md", "spec.md", "build.md", ...reviewFiles, "approval.md"];
+  for (const rel of copied) {
+    const parts = rel.split("/");
+    assert.ok(fs.readFileSync(path.join(target, ...parts)).equals(fs.readFileSync(path.join(jobDir, ...parts))), rel);
+  }
+  assert.deepEqual(listTree(target), ["Export me.md", ...copied.filter((f) => !f.startsWith("reviews/")), "reviews", ...reviewFiles].sort());
+
+  const index = fs.readFileSync(path.join(target, "Export me.md"), "utf8");
+  assert.ok(index.startsWith(`---\nfactory-job: ${id}\n`));
+  assert.ok(index.includes("\n# Export me\n"));
+  const links = index.split("\n").filter((l) => l.includes("[[")).map((l) => /\[\[([^|\]]+)\|/.exec(l)[1]);
+  assert.deepEqual(links, copied.map((f) => `Export me/${f.replace(/\.md$/, "")}`));
+});
+
+test("export with no id picks the most recently merged job", () => {
+  const { root, run } = setup();
+  const vault = freshVault();
+  setVault(root, vault);
+  run("init");
+  const first = mergeJob(root, run, "First merged");
+  mergeJob(root, run, "Second merged");
+  // Make the first job's merge the latest, so list order cannot be what decides.
+  const boardFile = path.join(root, "factory", "board.json");
+  const board = JSON.parse(fs.readFileSync(boardFile, "utf8"));
+  board.jobs.find((j) => j.id === first).history.find((h) => h.stage === "merged").at = "2099-01-01T00:00:00.000Z";
+  fs.writeFileSync(boardFile, JSON.stringify(board, null, 2) + "\n");
+  assert.equal(run("export"), path.join(vault, "First merged"));
+  assert.deepEqual(fs.readdirSync(vault), ["First merged"]);
+});
+
+test("export with no merged job exits 1", () => {
+  const { root, run } = setup();
+  const vault = freshVault();
+  setVault(root, vault);
+  run("init");
+  run("new", "Not done");
+  const r = exportRun(root);
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, "");
+  assert.match(r.stderr, /^error: No merged job to export\./);
+  assert.deepEqual(fs.readdirSync(vault), []);
+});
+
+test("export with an unknown id exits 1 with the usual message", () => {
+  const { root, run } = setup();
+  setVault(root, freshVault());
+  run("init");
+  const r = exportRun(root, "j-nope");
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^error: No job with id j-nope\./);
+});
+
+test("export of a job that is not merged exits 1 and writes nothing", () => {
+  const { root, run } = setup();
+  const vault = freshVault();
+  setVault(root, vault);
+  run("init");
+  const id = run("new", "Half done");
+  run("stage", id, "spec");
+  const r = exportRun(root, id);
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, "");
+  assert.ok(r.stderr.includes(id));
+  assert.ok(r.stderr.includes('"spec"'));
+  assert.match(r.stderr, /Only merged jobs can be exported\./);
+  assert.deepEqual(fs.readdirSync(vault), []);
+});
+
+test("export with obsidianDir null or empty exits 1 naming the config key and file", () => {
+  const { root, run } = setup();
+  run("init");
+  const id = mergeJob(root, run, "Export me");
+  for (const value of [null, ""]) {
+    setVault(root, value);
+    const r = exportRun(root, id);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, "");
+    assert.ok(r.stderr.includes("export.obsidianDir"));
+    assert.ok(r.stderr.includes("factory/config.json"));
+  }
+});
+
+test("export with an obsidianDir that does not exist exits 1 and does not create it", () => {
+  const { root, run } = setup();
+  run("init");
+  const id = mergeJob(root, run, "Export me");
+  const missing = path.join(freshVault(), "no-such-vault");
+  setVault(root, missing);
+  const r = exportRun(root, id);
+  assert.equal(r.status, 1);
+  assert.ok(r.stderr.includes(missing));
+  assert.equal(fs.existsSync(missing), false);
+});
+
+test("export resolves a relative obsidianDir against the repo root", () => {
+  const { root, run } = setup();
+  fs.mkdirSync(path.join(root, "vault"));
+  setVault(root, "vault");
+  run("init");
+  const id = mergeJob(root, run, "Export me");
+  assert.equal(run("export", id), path.join(root, "vault", "Export me"));
+});
+
+test("export into a folder owned by another job or by the user adds an (<id>) suffix", () => {
+  const { root, run } = setup();
+  const vault = freshVault();
+  setVault(root, vault);
+  run("init");
+  const id = mergeJob(root, run, "Export me");
+  fs.mkdirSync(path.join(vault, "Export me"));
+  const theirs = "---\nfactory-job: j-20200101-001\n---\n# Export me\n";
+  fs.writeFileSync(path.join(vault, "Export me", "Export me.md"), theirs);
+  assert.equal(run("export", id), path.join(vault, `Export me (${id})`));
+  assert.equal(fs.readFileSync(path.join(vault, "Export me", "Export me.md"), "utf8"), theirs);
+  assert.deepEqual(fs.readdirSync(path.join(vault, "Export me")), ["Export me.md"]);
+  const index = fs.readFileSync(path.join(vault, `Export me (${id})`, `Export me (${id}).md`), "utf8");
+  assert.ok(index.includes(`[[Export me (${id})/spec|`));
+
+  // A folder the user made by hand (no index note) is never written into either.
+  const vault2 = freshVault();
+  setVault(root, vault2);
+  fs.mkdirSync(path.join(vault2, "Export me"));
+  assert.equal(run("export", id), path.join(vault2, `Export me (${id})`));
+  assert.deepEqual(fs.readdirSync(path.join(vault2, "Export me")), []);
+
+  // If the suffixed folder is also someone else's, stop instead of writing into it.
+  const vault3 = freshVault();
+  setVault(root, vault3);
+  fs.mkdirSync(path.join(vault3, "Export me"));
+  fs.mkdirSync(path.join(vault3, `Export me (${id})`));
+  const r = exportRun(root, id);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /is not this job's export/);
+  assert.deepEqual(fs.readdirSync(path.join(vault3, `Export me (${id})`)), []);
+});
+
+test("re-export overwrites the same folder and keeps files the user added", () => {
+  const { root, run } = setup();
+  const vault = freshVault();
+  setVault(root, vault);
+  run("init");
+  const id = mergeJob(root, run, "Export me");
+  const target = run("export", id);
+  fs.writeFileSync(path.join(target, "spec.md"), "edited in Obsidian\n");
+  fs.writeFileSync(path.join(target, "Export me.md"), `---\nfactory-job: ${id}\n---\nstale index\n`);
+  fs.writeFileSync(path.join(target, "my notes.md"), "keep me\n");
+  assert.equal(run("export", id), target);
+  assert.deepEqual(fs.readdirSync(vault), ["Export me"]);
+  assert.ok(fs.readFileSync(path.join(target, "spec.md")).equals(fs.readFileSync(path.join(root, "factory", "jobs", id, "spec.md"))));
+  assert.doesNotMatch(fs.readFileSync(path.join(target, "Export me.md"), "utf8"), /stale index/);
+  assert.equal(fs.readFileSync(path.join(target, "my notes.md"), "utf8"), "keep me\n");
+});
+
+test("export leaves board.json and the job folder byte-identical", () => {
+  const { root, run } = setup();
+  setVault(root, freshVault());
+  run("init");
+  const id = mergeJob(root, run, "Export me");
+  const boardFile = path.join(root, "factory", "board.json");
+  const jobDir = path.join(root, "factory", "jobs", id);
+  const snapshot = () => [
+    fs.readFileSync(boardFile).toString("base64"),
+    ...listTree(jobDir).map((rel) => {
+      const abs = path.join(jobDir, ...rel.split("/"));
+      return `${rel}:${fs.statSync(abs).isFile() ? fs.readFileSync(abs).toString("base64") : "dir"}`;
+    }),
+  ];
+  const before = snapshot();
+  run("export", id);
+  run("export", id);
+  assert.deepEqual(snapshot(), before);
+});
+
+test("help lists export [<id>]", () => {
+  const { run } = setup();
+  assert.match(run("help"), /^  export \[<id>\]\s+export a merged job/m);
 });

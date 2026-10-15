@@ -22,6 +22,7 @@ const USAGE = `Usage: node scripts/board.mjs <command> [args]
   show [<id>]                            print the board or one job as JSON
   list                                   print one line per job (id, stage, rework, title)
   history <id>                           print one job's stage history, oldest first
+  export [<id>]                          export a merged job (default: the most recently merged) to export.obsidianDir
   validate                               check board.json integrity
   help (also --help, -h)                 print this usage`;
 
@@ -156,6 +157,61 @@ const commands = {
     if (!id) throw new Error("history needs a job id. Usage: node scripts/board.mjs history <id>");
     const board = B.loadBoard(root);
     out(B.formatJobHistory(B.findJob(board, id)));
+  },
+
+  export([id]) {
+    const config = B.loadConfig(root);
+    const vault = B.exportDir(config, root);
+    if (!vault) throw new Error("Export is off: set export.obsidianDir in factory/config.json to your Obsidian vault folder.");
+    if (!fs.existsSync(vault) || !fs.statSync(vault).isDirectory()) {
+      throw new Error(`Export folder ${vault} does not exist. Create it, or fix export.obsidianDir in factory/config.json.`);
+    }
+    const board = B.loadBoard(root);
+    const job = id ? B.findJob(board, id) : B.latestMergedJob(board);
+    if (!job) throw new Error("No merged job to export.");
+    if (job.stage !== "merged") {
+      throw new Error(`Job ${job.id} is in "${job.stage}". Only merged jobs can be exported.`);
+    }
+
+    const base = B.exportFolderName(job.title, job.id);
+    const owners = new Map();
+    for (const name of [base, `${base} (${job.id})`]) {
+      if (!fs.existsSync(path.join(vault, name))) continue;
+      const note = path.join(vault, name, `${name}.md`);
+      owners.set(name, fs.existsSync(note) ? B.parseExportOwner(fs.readFileSync(note, "utf8")) : null);
+    }
+    const folder = B.chooseExportFolder(base, job.id, owners);
+    const target = path.resolve(vault, folder);
+    const vaultRoot = path.resolve(vault);
+    const prefix = vaultRoot.endsWith(path.sep) ? vaultRoot : vaultRoot + path.sep;
+    if (!target.startsWith(prefix) || target.length === prefix.length) {
+      throw new Error(`Refusing to export outside ${vaultRoot}.`);
+    }
+    if (owners.has(folder) && owners.get(folder) !== job.id && folder !== base) {
+      throw new Error(`Export folder ${target} already exists and is not this job's export. Move or rename it, then retry.`);
+    }
+
+    const src = P.job(job.id);
+    const files = ["request.md", "spec.md", "build.md"].filter((f) => fs.existsSync(path.join(src, f)));
+    const reviewsDir = path.join(src, "reviews");
+    if (fs.existsSync(reviewsDir)) {
+      const reviews = fs
+        .readdirSync(reviewsDir, { withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.endsWith(".md"))
+        .map((e) => e.name)
+        .sort();
+      files.push(...reviews.map((r) => `reviews/${r}`));
+    }
+    if (fs.existsSync(path.join(src, "approval.md"))) files.push("approval.md");
+
+    fs.mkdirSync(target, { recursive: true });
+    for (const rel of files) {
+      const parts = rel.split("/");
+      if (parts.length > 1) fs.mkdirSync(path.join(target, ...parts.slice(0, -1)), { recursive: true });
+      fs.copyFileSync(path.join(src, ...parts), path.join(target, ...parts));
+    }
+    fs.writeFileSync(path.join(target, `${folder}.md`), B.renderExportIndex(job, folder, files), "utf8");
+    out(target);
   },
 
   validate() {
