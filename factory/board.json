@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-15T19:49:09.767Z",
+  "updatedAt": "2026-10-15T20:02:31.524Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -500,6 +500,59 @@
           "stage": "merged",
           "at": "2026-10-15T19:49:09.766Z",
           "note": "feeb4bd"
+        }
+      ]
+    },
+    {
+      "id": "j-20261015-010",
+      "title": "Guard dashboard stages against drift",
+      "request": "dashboard/index.html hard-codes its own `STAGES` array, which must match `STAGES` in scripts/lib/board.mjs (CLAUDE.md requires changing both together). Add a test in tests/ that reads dashboard/index.html, extracts the `STAGES` array literal and asserts it equals the exported `STAGES` in the same order. Do not restructure the dashboard; the test is the deliverable.",
+      "source": "backlog",
+      "stage": "merged",
+      "branch": "factory/j-20261015-010-guard-dashboard-stages-against-drift",
+      "rework": 0,
+      "risk": {
+        "level": "low",
+        "reasons": []
+      },
+      "verdicts": {
+        "security-reviewer": "pass",
+        "ux-reviewer": "pass",
+        "ui-design-reviewer": "pass",
+        "code-reviewer": "pass"
+      },
+      "createdAt": "2026-10-15T19:54:44.205Z",
+      "updatedAt": "2026-10-15T20:02:31.523Z",
+      "history": [
+        {
+          "stage": "queued",
+          "at": "2026-10-15T19:54:44.205Z",
+          "note": "created from backlog"
+        },
+        {
+          "stage": "spec",
+          "at": "2026-10-15T19:54:44.376Z",
+          "note": ""
+        },
+        {
+          "stage": "build",
+          "at": "2026-10-15T19:56:02.076Z",
+          "note": ""
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-15T19:59:48.793Z",
+          "note": ""
+        },
+        {
+          "stage": "approve",
+          "at": "2026-10-15T20:01:17.690Z",
+          "note": ""
+        },
+        {
+          "stage": "merged",
+          "at": "2026-10-15T20:02:31.523Z",
+          "note": "ad70925"
         }
       ]
     }
