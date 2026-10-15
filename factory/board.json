@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-15T17:37:02.030Z",
+  "updatedAt": "2026-10-15T17:45:26.079Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -158,6 +158,59 @@
           "stage": "merged",
           "at": "2026-10-15T17:37:02.029Z",
           "note": "35b0ed0"
+        }
+      ]
+    },
+    {
+      "id": "j-20261015-004",
+      "title": "Pin line endings for factory files",
+      "request": "Add a .gitattributes so *.md, *.json, *.mjs and *.html are stored and checked out with LF. Git currently warns \"LF will be replaced by CRLF\" for every factory/jobs file on Windows. Do not renormalise unrelated files beyond what the attributes require; npm test must still pass.",
+      "source": "backlog",
+      "stage": "merged",
+      "branch": "factory/j-20261015-004-pin-line-endings-for-factory-files",
+      "rework": 0,
+      "risk": {
+        "level": "low",
+        "reasons": []
+      },
+      "verdicts": {
+        "security-reviewer": "pass",
+        "ux-reviewer": "pass",
+        "ui-design-reviewer": "pass",
+        "code-reviewer": "pass"
+      },
+      "createdAt": "2026-10-15T17:39:23.866Z",
+      "updatedAt": "2026-10-15T17:45:26.078Z",
+      "history": [
+        {
+          "stage": "queued",
+          "at": "2026-10-15T17:39:23.866Z",
+          "note": "created from backlog"
+        },
+        {
+          "stage": "spec",
+          "at": "2026-10-15T17:39:23.925Z",
+          "note": ""
+        },
+        {
+          "stage": "build",
+          "at": "2026-10-15T17:40:40.592Z",
+          "note": ""
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-15T17:42:32.830Z",
+          "note": ""
+        },
+        {
+          "stage": "approve",
+          "at": "2026-10-15T17:44:06.270Z",
+          "note": ""
+        },
+        {
+          "stage": "merged",
+          "at": "2026-10-15T17:45:26.078Z",
+          "note": "8a75db2"
         }
       ]
     }
