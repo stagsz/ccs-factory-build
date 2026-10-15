@@ -80,7 +80,7 @@ Rework budget: `maxReworkCycles` (default 2). The board enforces it, you do not 
   - `needs-human`: `stage <id> needs-human --note "<why from the output>"`, run step 7, then step 6.
 
 ### 6. Park for a human
-Run this after step 7, even if step 7 stopped early (then also say the job's records are uncommitted). Tell the user, in three lines or fewer: job id, title, why it needs them, that the repo is left on `<mainBranch>` (the work is on `<branch>`), and the two commands they can use (`/factory approve <id>` or `/factory rework <id> <note>`). Stop the loop for this job.
+Run this after step 7, even if step 7 stopped early (then also say the job's records are uncommitted). Tell the user, in three lines or fewer: job id, title, why it needs them, the branch the repo is actually on and that the work is on `<branch>`, and the two commands they can use (`/factory approve <id>` or `/factory rework <id> <note>`). Check the current branch with `git branch --show-current` instead of assuming it: it is `<mainBranch>` once step 7 has switched (or the repo was already on main, as on the rollback paths), and `<branch>` when step 7 stopped before switching away from the job branch (validate errors or a failed switch). Stop the loop for this job.
 
 ### 7. Record the job
 Every end state (`merged`, `needs-human`, `failed`) runs this step, so the tree is clean for the next `/factory` run. Run in this order:
