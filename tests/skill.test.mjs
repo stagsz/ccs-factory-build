@@ -26,6 +26,21 @@ test("SKILL.md says how to stop safely when a git step in the record flow fails"
   assert.ok(skill.includes("leave the stage as is (do not run `stage`"));
 });
 
+test("SKILL.md step 6 names the branch the repo is actually on", () => {
+  const skill = read("skills", "factory", "SKILL.md");
+  const start = skill.indexOf("### 6. Park for a human");
+  const end = skill.indexOf("### 7. Record the job");
+  assert.ok(start !== -1 && end > start);
+  const step6 = skill.slice(start, end);
+  assert.ok(step6.includes("git branch --show-current"));
+  assert.ok(step6.includes("<mainBranch>"));
+  assert.ok(step6.includes("<branch>"));
+  assert.ok(step6.includes("three lines or fewer"));
+  assert.ok(step6.includes("/factory approve <id>"));
+  assert.ok(step6.includes("/factory rework <id> <note>"));
+  assert.ok(!skill.includes("that the repo is left on `<mainBranch>` (the work is on `<branch>`)"));
+});
+
 test("builder.md forbids touching the backlog and committing factory files", () => {
   const builder = read("agents", "builder.md");
   assert.ok(builder.includes("factory/backlog.md"));
