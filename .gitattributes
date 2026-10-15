@@ -1,0 +1,6 @@
+# Normalise text files to LF in the index; pin factory file types to LF on checkout.
+* text=auto
+*.md   text eol=lf
+*.json text eol=lf
+*.mjs  text eol=lf
+*.html text eol=lf
