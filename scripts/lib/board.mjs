@@ -14,8 +14,8 @@ export const STAGES = [
   "review",        // reviewers run in parallel
   "rework",        // builder resumed with review feedback
   "approve",       // approver decides merge or escalate
-  "merged",        // terminal: merged to main (or PR opened, depending on mergeMode)
   "needs-human",   // parked for a human decision
+  "merged",        // terminal: merged to main (or PR opened, depending on mergeMode)
   "failed",        // terminal: stopped with an error
 ];
 
