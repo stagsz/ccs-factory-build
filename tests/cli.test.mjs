@@ -121,6 +121,24 @@ test("unknown command prints the command list, then usage, and exits 2", () => {
   );
 });
 
+test("names inherited from Object.prototype are unknown commands", () => {
+  const { root, run } = setup();
+  for (const name of ["toString", "constructor", "hasOwnProperty", "__proto__", "valueOf"]) {
+    assert.throws(
+      () => run(name),
+      (e) => {
+        if (e.status !== 2) return false;
+        const [first, ...rest] = e.stdout.split(/\r?\n/);
+        if (!first.startsWith(`Unknown command "${name}". Commands: `)) return false;
+        if (!/Usage:/.test(rest.join("\n"))) return false;
+        return e.stderr === "";
+      },
+      `"${name}" should be an unknown command`,
+    );
+  }
+  assert.ok(!fs.existsSync(path.join(root, "factory", "board.json")));
+});
+
 test("CLI reports illegal moves and missing agent output as errors", () => {
   const { run } = setup();
   run("init");

@@ -160,7 +160,7 @@ if (!cmd) {
   out(USAGE);
   process.exit(2);
 }
-if (!commands[cmd]) {
+if (!Object.hasOwn(commands, cmd)) {
   out(`Unknown command "${cmd}". Commands: ${Object.keys(commands).join(", ")}`);
   out(USAGE);
   process.exit(2);
