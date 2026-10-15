@@ -16,7 +16,18 @@ test("SKILL.md records each job on main and rolls back without losing records", 
   assert.ok(!skill.includes("reset --hard"));
 });
 
+test("SKILL.md says how to stop safely when a git step in the record flow fails", () => {
+  const skill = read("skills", "factory", "SKILL.md");
+  assert.ok(skill.includes("If `reset --keep` reports an error, stop and tell the user"));
+  assert.ok(skill.includes("never retry with `--hard`"));
+  assert.ok(skill.includes("If the switch fails, stop and tell the user"));
+  assert.ok(skill.includes("git merge --abort"));
+  assert.ok(skill.includes("do not resolve conflicts yourself"));
+  assert.ok(skill.includes("leave the stage as is (do not run `stage`"));
+});
+
 test("builder.md forbids touching the backlog and committing factory files", () => {
   const builder = read("agents", "builder.md");
   assert.ok(builder.includes("factory/backlog.md"));
+  assert.ok(builder.includes("Never stage or commit anything under `factory/`"));
 });

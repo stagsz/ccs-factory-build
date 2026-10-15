@@ -74,28 +74,28 @@ Rework budget: `maxReworkCycles` (default 2). The board enforces it, you do not 
 - Spawn the **approver** agent. Prompt: job folder, branch, "decide merge or escalate, write approval.md".
 - `node scripts/board.mjs decide-merge <id> <changed files...>` (same file list as step 4).
   - `merged`: merge per `repo.mergeMode`:
-    - `local`: `git switch <mainBranch> && git merge --no-ff <branch> -m "factory: <title> (<id>)"`, then run the test command on main. If it fails, `git merge --abort` is no longer possible, so `git reset --keep ORIG_HEAD` (it keeps the uncommitted factory records; `--hard` would throw them away), then `stage <id> needs-human --note "tests failed on main after merge"`, run step 7, then step 6.
+    - `local`: `git switch <mainBranch> && git merge --no-ff <branch> -m "factory: <title> (<id>)"`, then run the test command on main. If it fails, `git merge --abort` is no longer possible, so `git reset --keep ORIG_HEAD` (it keeps the uncommitted factory records; `--hard` would throw them away). If `reset --keep` reports an error, stop and tell the user: do not run step 7, and never retry with `--hard`. Otherwise `stage <id> needs-human --note "tests failed on main after merge"`, run step 7, then step 6.
     - `pr`: `git push -u origin <branch>` and `gh pr create --base <mainBranch> --head <branch> --title "<title>" --body-file factory/jobs/<id>/approval.md`.
     Then `node scripts/board.mjs stage <id> merged --note "<merge commit or PR url>"` and run step 7 (in both `local` and `pr` mode).
   - `needs-human`: `stage <id> needs-human --note "<why from the output>"`, run step 7, then step 6.
 
 ### 6. Park for a human
-Run this only after step 7 has recorded the job. Tell the user, in three lines or fewer: job id, title, why it needs them, and the two commands they can use (`/factory approve <id>` or `/factory rework <id> <note>`). Stop the loop for this job.
+Run this after step 7, even if step 7 stopped early (then also say the job's records are uncommitted). Tell the user, in three lines or fewer: job id, title, why it needs them, that the repo is left on `<mainBranch>` (the work is on `<branch>`), and the two commands they can use (`/factory approve <id>` or `/factory rework <id> <note>`). Stop the loop for this job.
 
 ### 7. Record the job
 Every end state (`merged`, `needs-human`, `failed`) runs this step, so the tree is clean for the next `/factory` run. Run in this order:
-1. `node scripts/board.mjs validate`. If it reports errors, stop and tell the user; do not commit.
-2. `git switch <mainBranch>` (skip if already on main). The job's factory records are uncommitted, so they come along.
+1. `node scripts/board.mjs validate`. If it reports errors, tell the user the errors and that the job's records are uncommitted, skip the rest of this step, and carry on with what follows step 7 on that path (step 6 for a `needs-human` job).
+2. `git switch <mainBranch>` (skip if already on main). The job's factory records are uncommitted, so they come along. If the switch fails, stop and tell the user (with the step 6 message for a `needs-human` job); do not use `git stash` or `--force`.
 3. `git add factory/board.json factory/backlog.md factory/jobs/<id>`
 4. `git commit -m "factory: record <id>"`. Skip the commit when nothing is staged (`git diff --cached --quiet` exits 0).
 
-Do not push the record commit. It stays on local main.
+Never push main yourself; the record commit stays on local main. In `pr` mode, job branches are cut from local main, so earlier record commits (and, after a human rework, this job's own) reach origin through a later job branch and its PR. That is expected.
 
 ## Human commands
 
-**`/factory approve <id>`**: job must be `needs-human`. Merge per step 5's merge rules, then `stage <id> merged --note "human approved"` and run step 7. If the merge rolls back, follow step 5's rollback path (step 7, then step 6).
+**`/factory approve <id>`**: job must be `needs-human`. Merge per step 5's merge rules, then `stage <id> merged --note "human approved"` and run step 7. If tests fail on main after a `local` merge, run `git reset --keep ORIG_HEAD` (if it reports an error, stop and tell the user: do not run step 7, never retry with `--hard`). The job is already `needs-human`, so leave the stage as is (do not run `stage`; the board rejects `needs-human` to `needs-human`), then run step 7, then step 6.
 
-**`/factory rework <id> <note>`**: job must be `needs-human`. Switch to the job branch and run `git merge --no-edit <mainBranch>` so the branch carries the job's record commit from step 7 (without it the switch drops `factory/jobs/<id>/` and the current board). Then run `node scripts/board.mjs rework <id> --note "<note>"` (a human rework grants a fresh budget), resume the builder with the note plus the latest reviews, then continue from step 4.
+**`/factory rework <id> <note>`**: job must be `needs-human`. Switch to the job branch and run `git merge --no-edit <mainBranch>` so the branch carries the job's record commit from step 7 (without it the switch drops `factory/jobs/<id>/` and the current board). If the merge reports conflicts, run `git merge --abort`, switch back to `<mainBranch>` and tell the user; do not resolve conflicts yourself. Then run `node scripts/board.mjs rework <id> --note "<note>"` (a human rework grants a fresh budget), resume the builder with the note plus the latest reviews, then continue from step 4.
 
 **`/factory status`**: `node scripts/board.mjs show` and summarise as a short table: id, title, stage, rework count. With an id, show that job's history.
 
