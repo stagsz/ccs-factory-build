@@ -41,6 +41,16 @@ test("SKILL.md step 6 names the branch the repo is actually on", () => {
   assert.ok(!skill.includes("that the repo is left on `<mainBranch>` (the work is on `<branch>`)"));
 });
 
+test("SKILL.md has /factory approved for export, separate from /factory approve", () => {
+  const skill = read("skills", "factory", "SKILL.md");
+  assert.ok(skill.includes("/factory approved [<job-id>]"));
+  assert.ok(skill.includes("node scripts/board.mjs export"));
+  assert.ok(skill.includes("/factory approve <job-id>"));
+  assert.ok(skill.includes("matched on the exact first word"));
+  assert.ok(skill.includes("**`/factory approved [<id>]`**"));
+  assert.ok(skill.includes("no commit is made for an export"));
+});
+
 test("builder.md forbids touching the backlog and committing factory files", () => {
   const builder = read("agents", "builder.md");
   assert.ok(builder.includes("factory/backlog.md"));

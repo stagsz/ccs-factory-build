@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 import * as B from "../scripts/lib/board.mjs";
 
 const config = {
@@ -319,4 +320,189 @@ test("formatJobHistory: empty or missing history prints No history.", () => {
   assert.equal(B.formatJobHistory(historyJob([])), expected);
   const { history, ...noHistory } = historyJob([]);
   assert.equal(B.formatJobHistory(noHistory), expected);
+});
+
+// ---------- export ----------
+
+test("exportFolderName removes each forbidden filename character", () => {
+  for (const c of ["<", ">", ":", '"', "/", "\\", "|", "?", "*"]) {
+    assert.equal(B.exportFolderName(`a${c}b`, "j-1"), "ab", `char ${JSON.stringify(c)}`);
+  }
+});
+
+test("exportFolderName removes control chars and Obsidian link breakers", () => {
+  assert.equal(B.exportFolderName("a\u0000b\u001fc\u007fd", "j-1"), "abcd");
+  assert.equal(B.exportFolderName("a\tb\nc", "j-1"), "abc");
+  assert.equal(B.exportFolderName("#tag ^block [[link]]", "j-1"), "tag block link");
+});
+
+test("exportFolderName collapses whitespace, trims, and strips trailing dots and spaces", () => {
+  assert.equal(B.exportFolderName("  Export   jobs  ", "j-1"), "Export jobs");
+  assert.equal(B.exportFolderName("Done... . ", "j-1"), "Done");
+  assert.equal(B.exportFolderName("..", "j-1"), "j-1");
+  assert.equal(B.exportFolderName("../../etc", "j-1"), "....etc");
+  assert.equal(B.exportFolderName("..\\..\\etc", "j-1"), "....etc");
+});
+
+test("exportFolderName suffixes Windows reserved names, case-insensitive, with extensions", () => {
+  assert.equal(B.exportFolderName("CON", "j-1"), "CON_");
+  assert.equal(B.exportFolderName("prn", "j-1"), "prn_");
+  assert.equal(B.exportFolderName("Aux", "j-1"), "Aux_");
+  assert.equal(B.exportFolderName("nul", "j-1"), "nul_");
+  assert.equal(B.exportFolderName("Com1", "j-1"), "Com1_");
+  assert.equal(B.exportFolderName("lpt9", "j-1"), "lpt9_");
+  assert.equal(B.exportFolderName("con.txt", "j-1"), "con_.txt");
+  assert.equal(B.exportFolderName("aux.", "j-1"), "aux_");
+  assert.equal(B.exportFolderName("console", "j-1"), "console");
+  assert.equal(B.exportFolderName("COM0", "j-1"), "COM0");
+});
+
+test("exportFolderName suffixes names that would collide with a copied record", () => {
+  assert.equal(B.exportFolderName("Spec", "j-1"), "Spec_");
+  assert.equal(B.exportFolderName("request", "j-1"), "request_");
+  assert.equal(B.exportFolderName("BUILD", "j-1"), "BUILD_");
+  assert.equal(B.exportFolderName("approval", "j-1"), "approval_");
+  assert.equal(B.exportFolderName("Specs", "j-1"), "Specs");
+});
+
+test("exportFolderName caps at 100 chars, then trims trailing dots and spaces", () => {
+  assert.equal(B.exportFolderName("x".repeat(150), "j-1"), "x".repeat(100));
+  assert.equal(B.exportFolderName(`${"y".repeat(98)}. z`, "j-1"), "y".repeat(98));
+});
+
+test("exportFolderName falls back to the id when nothing is left", () => {
+  assert.equal(B.exportFolderName("", "j-1"), "j-1");
+  assert.equal(B.exportFolderName("???", "j-1"), "j-1");
+  assert.equal(B.exportFolderName(" . ", "j-1"), "j-1");
+  assert.equal(B.exportFolderName(undefined, "j-1"), "j-1");
+});
+
+test("chooseExportFolder: free, owned by same id, owned by another id, foreign folder", () => {
+  assert.equal(B.chooseExportFolder("Title", "j-1", new Map()), "Title");
+  assert.equal(B.chooseExportFolder("Title", "j-1", new Map([["Title", "j-1"]])), "Title");
+  assert.equal(B.chooseExportFolder("Title", "j-1", new Map([["Title", "j-2"]])), "Title (j-1)");
+  assert.equal(B.chooseExportFolder("Title", "j-1", new Map([["Title", null]])), "Title (j-1)");
+  assert.equal(B.chooseExportFolder("Title", "j-1", new Map([["Other", "j-2"]])), "Title");
+});
+
+test("parseExportOwner reads factory-job from leading frontmatter only", () => {
+  assert.equal(B.parseExportOwner("---\nfactory-job: j-1\ntitle: x\n---\n# x\n"), "j-1");
+  assert.equal(B.parseExportOwner("---\r\ntitle: x\r\nfactory-job: \"j-2\"\r\n---\r\n"), "j-2");
+  assert.equal(B.parseExportOwner("---\ntitle: x\n---\nfactory-job: j-1\n"), null);
+  assert.equal(B.parseExportOwner("# Note\n\nfactory-job: j-1\n"), null);
+  assert.equal(B.parseExportOwner("\n---\nfactory-job: j-1\n---\n"), null);
+  assert.equal(B.parseExportOwner(""), null);
+});
+
+function mergedJob(id, ats, stage = "merged") {
+  return {
+    id,
+    title: id,
+    stage,
+    history: [{ stage: "queued", at: "2026-01-01T00:00:00.000Z", note: "" }, ...ats.map((at) => ({ stage: "merged", at, note: "" }))],
+  };
+}
+
+test("latestMergedJob: none, picks the latest merged entry, ignores non-merged jobs", () => {
+  assert.equal(B.latestMergedJob(B.emptyBoard()), null);
+  assert.equal(B.latestMergedJob({ jobs: [mergedJob("j-1", [], "review")] }), null);
+  const board = {
+    jobs: [
+      mergedJob("j-1", ["2026-03-01T00:00:00.000Z"]),
+      // Out-of-order history: the later merged entry comes first.
+      mergedJob("j-2", ["2026-05-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z"]),
+      mergedJob("j-3", ["2026-04-01T00:00:00.000Z"]),
+      // Not in "merged" now, so ignored even with a later merged entry.
+      mergedJob("j-4", ["2026-09-01T00:00:00.000Z"], "failed"),
+    ],
+  };
+  assert.equal(B.latestMergedJob(board).id, "j-2");
+});
+
+function exportJob() {
+  return {
+    id: "j-20261015-011",
+    title: "Export jobs",
+    stage: "merged",
+    branch: "factory/j-20261015-011-export-jobs",
+    risk: { level: "high", reasons: ["sensitive paths: factory/config.json"] },
+    verdicts: { "code-reviewer": "pass", "security-reviewer": "changes" },
+    history: [
+      { stage: "spec", at: "2026-10-15T10:00:00.000Z", note: "a | b\nc" },
+      { stage: "queued", at: "2026-10-15T09:00:00.000Z", note: "created from cli" },
+      { stage: "merged", at: "2026-10-15T11:00:00.000Z", note: "abc123" },
+    ],
+  };
+}
+
+test("renderExportIndex: frontmatter, heading, fields, risk and verdicts", () => {
+  const md = B.renderExportIndex(exportJob(), "Export jobs", []);
+  assert.ok(md.startsWith("---\nfactory-job: j-20261015-011\n"));
+  assert.equal(B.parseExportOwner(md), "j-20261015-011");
+  for (const s of [
+    'title: "Export jobs"',
+    "stage: merged",
+    'branch: "factory/j-20261015-011-export-jobs"',
+    "risk: high",
+    "\n# Export jobs\n",
+    "- Id: j-20261015-011",
+    "- Title: Export jobs",
+    "- Stage: merged",
+    "- Branch: factory/j-20261015-011-export-jobs",
+    "- Level: high",
+    "- Reason: sensitive paths: factory/config.json",
+    "- code-reviewer: pass",
+    "- security-reviewer: changes",
+  ]) assert.ok(md.includes(s), `missing ${JSON.stringify(s)}`);
+});
+
+test("renderExportIndex: not assessed risk and none verdicts", () => {
+  const job = { ...exportJob(), risk: null, verdicts: {} };
+  const md = B.renderExportIndex(job, "Export jobs", []);
+  assert.ok(md.includes("risk: not assessed"));
+  assert.ok(md.includes("## Risk\n\n- not assessed\n"));
+  assert.ok(md.includes("## Verdicts\n\n- none\n"));
+});
+
+test("renderExportIndex: history table oldest first, pipes escaped, newlines flattened", () => {
+  const md = B.renderExportIndex(exportJob(), "Export jobs", []);
+  assert.ok(md.includes("| At | Stage | Note |\n|---|---|---|\n"));
+  const rows = md.split("\n").filter((l) => l.startsWith("| 2026"));
+  assert.deepEqual(rows, [
+    "| 2026-10-15T09:00:00.000Z | queued | created from cli |",
+    "| 2026-10-15T10:00:00.000Z | spec | a \\| b c |",
+    "| 2026-10-15T11:00:00.000Z | merged | abc123 |",
+  ]);
+});
+
+test("renderExportIndex: one link per given file, in order, nothing else", () => {
+  const files = ["request.md", "spec.md", "reviews/code-reviewer.md", "approval.md"];
+  const md = B.renderExportIndex(exportJob(), "Export jobs", files);
+  const links = md.split("\n").filter((l) => l.includes("[["));
+  assert.deepEqual(links, [
+    "- [[Export jobs/request|Request]]",
+    "- [[Export jobs/spec|Spec]]",
+    "- [[Export jobs/reviews/code-reviewer|Review: code-reviewer]]",
+    "- [[Export jobs/approval|Approval]]",
+  ]);
+  assert.ok(!md.includes("/build"));
+});
+
+test("renderExportIndex does not mutate the job", () => {
+  const job = exportJob();
+  const before = JSON.stringify(job);
+  B.renderExportIndex(job, "Export jobs", ["spec.md"]);
+  assert.equal(JSON.stringify(job), before);
+});
+
+test("exportDir: off when absent, null or blank; relative resolves against root", () => {
+  const root = path.resolve("repo-root");
+  assert.equal(B.exportDir({}, root), null);
+  assert.equal(B.exportDir({ export: {} }, root), null);
+  assert.equal(B.exportDir({ export: { obsidianDir: null } }, root), null);
+  assert.equal(B.exportDir({ export: { obsidianDir: "" } }, root), null);
+  assert.equal(B.exportDir({ export: { obsidianDir: "  " } }, root), null);
+  assert.equal(B.exportDir({ export: { obsidianDir: "vault" } }, root), path.join(root, "vault"));
+  const abs = path.resolve("elsewhere", "vault");
+  assert.equal(B.exportDir({ export: { obsidianDir: abs } }, root), abs);
 });
