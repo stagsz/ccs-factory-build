@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-15T19:18:45.866Z",
+  "updatedAt": "2026-10-15T19:26:41.182Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -341,6 +341,59 @@
           "stage": "merged",
           "at": "2026-10-15T19:18:45.865Z",
           "note": "human approved (3ef889a)"
+        }
+      ]
+    },
+    {
+      "id": "j-20261015-007",
+      "title": "Close backlog items when a job ends",
+      "request": "Backlog items stay `[~]` forever, even after their job merges. When `node scripts/board.mjs stage <id> merged` runs for a job whose source is \"backlog\", change that job's backlog line (the one ending in `(<id>)`) from `[~]` to `[x]`; on `stage <id> failed`, change it to `[!]`. Put the line rewrite in scripts/lib/board.mjs as a pure function (e.g. `closeBacklogItem(markdown, jobId, mark)`) that preserves CRLF/LF like `markBacklogItem`, and leaves the markdown unchanged when no line matches. `nextBacklogItem` must still pick only `[ ]` lines. Unit tests in tests/board.test.mjs, a CLI test in tests/cli.test.mjs, and update the format note at the top of backlog.md.",
+      "source": "backlog",
+      "stage": "merged",
+      "branch": "factory/j-20261015-007-close-backlog-items-when-a-job-ends",
+      "rework": 0,
+      "risk": {
+        "level": "low",
+        "reasons": []
+      },
+      "verdicts": {
+        "ux-reviewer": "pass",
+        "security-reviewer": "pass",
+        "ui-design-reviewer": "pass",
+        "code-reviewer": "pass"
+      },
+      "createdAt": "2026-10-15T19:19:41.765Z",
+      "updatedAt": "2026-10-15T19:26:41.181Z",
+      "history": [
+        {
+          "stage": "queued",
+          "at": "2026-10-15T19:19:41.765Z",
+          "note": "created from backlog"
+        },
+        {
+          "stage": "spec",
+          "at": "2026-10-15T19:19:42.016Z",
+          "note": ""
+        },
+        {
+          "stage": "build",
+          "at": "2026-10-15T19:20:59.023Z",
+          "note": ""
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-15T19:24:04.117Z",
+          "note": ""
+        },
+        {
+          "stage": "approve",
+          "at": "2026-10-15T19:25:21.517Z",
+          "note": ""
+        },
+        {
+          "stage": "merged",
+          "at": "2026-10-15T19:26:41.181Z",
+          "note": "ee3c8ad"
         }
       ]
     }
