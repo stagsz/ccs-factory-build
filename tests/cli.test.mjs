@@ -116,7 +116,7 @@ test("risk floor overrides an approver who wants to merge", () => {
   assert.match(decision.why, /package\.json/);
 });
 
-const allCommands = ["init", "new", "next", "stage", "verdict", "decide-review", "rework", "risk", "decide-merge", "show", "list", "validate", "help"];
+const allCommands = ["init", "new", "next", "stage", "verdict", "decide-review", "rework", "risk", "decide-merge", "show", "list", "history", "validate", "help"];
 
 test("help, --help and -h print the same usage and exit 0 before init", () => {
   const { root, run } = setup();
@@ -200,6 +200,44 @@ test("list prints a header and one row per job in creation order, read-only", ()
   assert.match(lines[1], new RegExp(`^${first}\\s+spec\\s+0\\s+First job$`));
   assert.match(lines[2], new RegExp(`^${second}\\s+queued\\s+0\\s+Second job title$`));
   assert.ok(fs.readFileSync(boardFile).equals(before), "list must not rewrite board.json");
+});
+
+test("history prints the job header and its stages oldest first, read-only", () => {
+  const { root, run } = setup();
+  run("init");
+  const id = run("new", "History", "job");
+  run("stage", id, "spec", "--note", "spec ready");
+  const boardFile = path.join(root, "factory", "board.json");
+  const before = fs.readFileSync(boardFile);
+  const job = JSON.parse(run("show", id));
+  const lines = run("history", id).split(/\r?\n/);
+  assert.equal(lines.length, 6);
+  assert.equal(lines[0], `${id}  History job`);
+  assert.equal(lines[1], `Branch: ${job.branch}`);
+  assert.equal(lines[2], "");
+  assert.match(lines[3], /^AT\s+STAGE\s+NOTE$/);
+  assert.match(lines[4], /^\S+\s+queued\s+created from cli$/);
+  assert.match(lines[5], /^\S+\s+spec\s+spec ready$/);
+  assert.ok(fs.readFileSync(boardFile).equals(before), "history must not rewrite board.json");
+});
+
+test("history with an unknown id prints an error to stderr and exits 1", () => {
+  const { root, run } = setup();
+  run("init");
+  const r = spawnSync(process.execPath, [cli, "history", "j-nope"], { cwd: root, encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, "");
+  assert.match(r.stderr, /^error: No job with id j-nope\./);
+});
+
+test("history with no id prints a usage error to stderr and exits 1", () => {
+  const { root, run } = setup();
+  run("init");
+  const r = spawnSync(process.execPath, [cli, "history"], { cwd: root, encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, "");
+  assert.match(r.stderr, /^error: history needs a job id\. Usage: node scripts\/board\.mjs history <id>/);
+  assert.doesNotMatch(r.stderr, /undefined/);
 });
 
 test("CLI reports illegal moves and missing agent output as errors", () => {

@@ -21,6 +21,7 @@ const USAGE = `Usage: node scripts/board.mjs <command> [args]
   decide-merge <id> <file> [...]         read approval.md + risk floor, print merged | needs-human
   show [<id>]                            print the board or one job as JSON
   list                                   print one line per job (id, stage, rework, title)
+  history <id>                           print one job's stage history, oldest first
   validate                               check board.json integrity
   help (also --help, -h)                 print this usage`;
 
@@ -149,6 +150,12 @@ const commands = {
 
   list() {
     out(B.formatJobList(B.loadBoard(root)));
+  },
+
+  history([id]) {
+    if (!id) throw new Error("history needs a job id. Usage: node scripts/board.mjs history <id>");
+    const board = B.loadBoard(root);
+    out(B.formatJobHistory(B.findJob(board, id)));
   },
 
   validate() {

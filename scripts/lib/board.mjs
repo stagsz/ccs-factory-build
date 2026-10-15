@@ -323,3 +323,16 @@ export function formatJobList(board) {
   const widths = [0, 1, 2].map((c) => Math.max(...table.map((r) => r[c].length)));
   return table.map((r) => [...widths.map((w, c) => r[c].padEnd(w)), r[3]].join("  ")).join("\n");
 }
+
+// One job's stage history (at, stage, note), oldest first. Pure: sorts a copy.
+export function formatJobHistory(job) {
+  const head = [`${job.id}  ${job.title}`, `Branch: ${job.branch}`, ""];
+  const history = job.history ?? [];
+  if (!history.length) return [...head, "No history."].join("\n");
+  const byAt = (a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
+  const rows = [...history].sort(byAt).map((h) => [String(h.at), String(h.stage), String(h.note ?? "")]);
+  const table = [["AT", "STAGE", "NOTE"], ...rows];
+  const widths = [0, 1].map((c) => Math.max(...table.map((r) => r[c].length)));
+  const lines = table.map((r) => [...widths.map((w, c) => r[c].padEnd(w)), r[2]].join("  ").trimEnd());
+  return [...head, ...lines].join("\n");
+}
