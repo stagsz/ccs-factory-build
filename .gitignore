@@ -12,3 +12,6 @@ Thumbs.db
 
 # per-job git worktrees (parallel.worktreeDir)
 .worktrees/
+
+# original factory prompt, kept locally
+Software factory build.md

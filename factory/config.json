@@ -20,7 +20,7 @@
   "reviewers": ["security-reviewer", "ux-reviewer", "ui-design-reviewer", "code-reviewer"],
   "maxReworkCycles": 2,
   "parallel": {
-    "maxJobs": 1,
+    "maxJobs": 3,
     "worktreeDir": ".worktrees"
   },
   "export": {
