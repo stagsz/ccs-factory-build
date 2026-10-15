@@ -74,7 +74,7 @@ Commit the generated `.claude/` folder so the factory travels with the repo. The
 | Command | What it does |
 |---|---|
 | `/factory <feature>` | New job from the request, run through the line |
-| `/factory next` | Next `- [ ]` item in `factory/backlog.md` |
+| `/factory next` | Next `- [ ]` item in `factory/backlog.md`. Markers: `[ ]` queued, `[~]` taken (line ends with `(<job-id>)`), `[x]` merged, `[!]` failed. The board CLI closes `[~]` to `[x]` or `[!]` when the job ends |
 | `/factory approve <job-id>` | Merge a job parked as needs-human |
 | `/factory rework <job-id> <note>` | Send a job back to the builder with a note |
 | `/factory status [<job-id>]` | Board summary, or one job's history |

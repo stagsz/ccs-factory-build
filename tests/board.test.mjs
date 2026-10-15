@@ -170,6 +170,57 @@ test("backlog: next item, request split, marking, CRLF preserved", () => {
   assert.equal(B.nextBacklogItem("# empty\n- [x] all done\n"), null);
 });
 
+test("closeBacklogItem: x and ! on LF, other lines unchanged, trailing newline kept", () => {
+  const md = "# Backlog\n- [x] done (j-0)\n- [~] Health check :: Add GET /health (j-1)\n- [~] Other (j-2)\n- [ ] Later\n";
+  assert.equal(
+    B.closeBacklogItem(md, "j-1", "x"),
+    "# Backlog\n- [x] done (j-0)\n- [x] Health check :: Add GET /health (j-1)\n- [~] Other (j-2)\n- [ ] Later\n",
+  );
+  assert.equal(
+    B.closeBacklogItem(md, "j-2", "!"),
+    "# Backlog\n- [x] done (j-0)\n- [~] Health check :: Add GET /health (j-1)\n- [!] Other (j-2)\n- [ ] Later\n",
+  );
+});
+
+test("closeBacklogItem: x and ! on CRLF stay CRLF", () => {
+  const md = "# Backlog\r\n  * [~] Indented (j-1)  \r\n- [~] Other (j-2)\r\n- [ ] Later\r\n";
+  assert.equal(B.closeBacklogItem(md, "j-1", "x"), "# Backlog\r\n  * [x] Indented (j-1)  \r\n- [~] Other (j-2)\r\n- [ ] Later\r\n");
+  assert.equal(B.closeBacklogItem(md, "j-2", "!"), "# Backlog\r\n  * [~] Indented (j-1)  \r\n- [!] Other (j-2)\r\n- [ ] Later\r\n");
+});
+
+test("closeBacklogItem: no match returns the same string", () => {
+  const md = "# Backlog\n- [~] Running (j-1)\n- [ ] Queued (j-3)\n";
+  assert.equal(B.closeBacklogItem(md, "j-9", "x"), md);
+  assert.equal(B.closeBacklogItem(md, "j-3", "x"), md);
+  assert.equal(B.closeBacklogItem("", "j-1", "!"), "");
+});
+
+test("closeBacklogItem: id-prefix collisions change nothing", () => {
+  const short = "- [~] A (j-1)\n";
+  const long = "- [~] B (j-11)\n";
+  assert.equal(B.closeBacklogItem(long, "j-1", "x"), long);
+  assert.equal(B.closeBacklogItem(short, "j-11", "x"), short);
+  assert.equal(B.closeBacklogItem("- [~] C (xj-1)\n", "j-1", "x"), "- [~] C (xj-1)\n");
+});
+
+test("closeBacklogItem: already-closed lines change nothing", () => {
+  const md = "- [x] Merged (j-1)\n- [!] Failed (j-2)\n";
+  assert.equal(B.closeBacklogItem(md, "j-1", "!"), md);
+  assert.equal(B.closeBacklogItem(md, "j-2", "x"), md);
+});
+
+test("closeBacklogItem: invalid mark throws", () => {
+  for (const bad of ["[x]", "X", "~", " ", "", undefined]) {
+    assert.throws(() => B.closeBacklogItem("- [~] A (j-1)\n", "j-1", bad), /mark/);
+  }
+});
+
+test("nextBacklogItem skips [!], [x] and [~] lines", () => {
+  const md = "- [!] Failed (j-1)\n- [x] Merged (j-2)\n- [~] Running (j-3)\n- [ ] Next one\n";
+  assert.equal(B.nextBacklogItem(md).title, "Next one");
+  assert.equal(B.nextBacklogItem("- [!] Failed (j-1)\n"), null);
+});
+
 test("validateBoard catches duplicates, bad stages and bad verdicts", () => {
   const { board, job } = freshJob();
   board.jobs.push({ ...job });
