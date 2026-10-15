@@ -94,6 +94,10 @@ test("SKILL.md decides every failed git merge by MERGE_HEAD, not by git's messag
   assert.ok(skill.includes("merge refused: <git line>"));
   assert.ok(skill.includes("double quotes, `$` and backticks removed"));
   assert.ok(skill.includes("If `git merge --abort` fails, stop and tell the user"));
+  assert.ok(skill.includes("and backslashes removed too"));
+  assert.ok(skill.includes("In either branch never go on to the tests or `merged`. If `git merge --abort` fails"));
+  assert.ok(skill.includes("do not resolve conflicts yourself. If the merge exits 0, run `node scripts/board.mjs rework"));
+  assert.ok(!skill.includes("In both cases never go on to the tests"));
   assert.ok(!skill.includes("If the merge reports conflicts"));
   assert.ok(!skill.includes("conflicts with <mainBranch>"));
   assert.ok(!skill.includes("merge refused: <git message>"));
