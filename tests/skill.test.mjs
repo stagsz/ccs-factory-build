@@ -20,7 +20,7 @@ test("SKILL.md says how to stop safely when a git step in the record flow fails"
   const skill = read("skills", "factory", "SKILL.md");
   assert.ok(skill.includes("If `reset --keep` reports an error, stop and tell the user"));
   assert.ok(skill.includes("never retry with `--hard`"));
-  assert.ok(skill.includes("If the switch fails, stop and tell the user"));
+  assert.ok(skill.includes("If `git worktree remove` fails, stop and tell the user"));
   assert.ok(skill.includes("git merge --abort"));
   assert.ok(skill.includes("do not resolve conflicts yourself"));
   assert.ok(skill.includes("leave the stage as is (do not run `stage`"));
@@ -55,4 +55,27 @@ test("builder.md forbids touching the backlog and committing factory files", () 
   const builder = read("agents", "builder.md");
   assert.ok(builder.includes("factory/backlog.md"));
   assert.ok(builder.includes("Never stage or commit anything under `factory/`"));
+  assert.ok(builder.includes("worktree"));
+});
+
+test("SKILL.md runs every job in its own worktree and never switches the main checkout", () => {
+  const skill = read("skills", "factory", "SKILL.md");
+  assert.ok(skill.includes("git worktree add -b <branch> <worktree> <mainBranch>"));
+  assert.ok(skill.includes("node scripts/board.mjs preflight"));
+  assert.ok(skill.includes("node scripts/board.mjs slots"));
+  assert.ok(skill.includes("node scripts/board.mjs worktree <id>"));
+  assert.ok(skill.includes("parallel.maxJobs"));
+  assert.ok(skill.includes("/factory next [<n>]"));
+  assert.ok(skill.includes("## Running several jobs"));
+  assert.ok(!skill.includes("git switch"));
+  assert.ok(!skill.includes("worktree remove --force"));
+  assert.ok(!skill.includes("One job at a time in this version"));
+});
+
+test("every configured reviewer and the approver work in the job's worktree", () => {
+  const config = JSON.parse(fs.readFileSync(path.join(source, "..", "factory", "config.json"), "utf8"));
+  for (const name of [...config.reviewers, "approver"]) {
+    const text = read("agents", `${name}.md`);
+    assert.ok(text.includes("worktree"), `${name}.md must mention the worktree`);
+  }
 });

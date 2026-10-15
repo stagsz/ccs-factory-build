@@ -13,8 +13,8 @@ You do not write specs, code, reviews or approvals yourself. Each agent has one 
 
 | Command | What it does |
 |---|---|
-| `/factory <feature>` | Create a job from the request and run it through the line |
-| `/factory next` | Take the next `- [ ]` item from `factory/backlog.md` and run it |
+| `/factory <feature>` | Create a job from the request and run it through the line (only if a slot is free) |
+| `/factory next [<n>]` | Take the next `<n>` (default 1) `- [ ]` items from `factory/backlog.md`, up to the free slots, and run them |
 | `/factory approve <job-id>` | Human approves a `needs-human` job: merge it |
 | `/factory rework <job-id> <note>` | Human sends a job back to the builder with a note |
 | `/factory status [<job-id>]` | Show the board, or one job's history |
@@ -24,14 +24,21 @@ Read the argument the user gave after `/factory` and pick the matching command b
 
 ## Before the first job
 
-1. Read `factory/config.json` (models, reviewers, rework budget, risk rules, test command).
+1. Read `factory/config.json` (models, reviewers, rework budget, risk rules, test command, `parallel.maxJobs`, `parallel.worktreeDir`).
 2. Read `CLAUDE.md` and inspect the repo once so you can tell agents its language, test command and conventions. Put what you learn in each agent's prompt; agents do not share your conversation.
 3. Run `node scripts/board.mjs init`.
-4. Check the working tree is clean (`git status --porcelain`). If it is not, stop and tell the user.
+4. Run `node scripts/board.mjs preflight`. It passes when the tree is clean apart from the uncommitted records of in-flight jobs. If it exits 1, stop and tell the user the paths it lists.
+5. Check the main checkout is on main: `git branch --show-current` must print `<mainBranch>`. If it does not, stop and tell the user. The main checkout never leaves `<mainBranch>`; jobs build in their own worktrees.
+6. Run `node scripts/board.mjs slots`. If it reports `free 0`, tell the user which jobs hold the slots and stop. Jobs left active by an earlier session count; the user can resume them or end one with `node scripts/board.mjs stage <id> failed`. `/factory next <n>` takes `min(<n>, free)` items; `/factory <feature>` needs one free slot.
 
 ## The line
 
-Every job lives in `factory/jobs/<job-id>/`. Agents read earlier files from that folder and write only their own:
+Every job has two places, both absolute paths you pass to every agent:
+
+- `<jobdir>`: the job folder `factory/jobs/<job-id>/` **in the main checkout**. All job records live here, and only here.
+- `<worktree>`: the job's git worktree, the output of `node scripts/board.mjs worktree <id>` (`<parallel.worktreeDir>/<id>`). All code work happens here, on the job branch.
+
+The worktree holds its own tracked copy of `factory/`; it is stale and nobody writes to it. You run every `node scripts/board.mjs` command and every `git merge` from the main checkout. Agents read earlier files from `<jobdir>` and write only their own:
 
 ```
 request.md            created by board.mjs
@@ -43,72 +50,91 @@ approval.md           approver, carries RISK: low|high and DECISION: merge|escal
 
 ### 1. Create the job
 - Feature: `node scripts/board.mjs new "<short title>" --request "<full request>"`
-- Next: `node scripts/board.mjs next`
+- Next: `node scripts/board.mjs next` (once per item for `/factory next <n>`)
 The command prints the job id. Use it everywhere below as `<id>`. Read the branch name with `node scripts/board.mjs show <id>`.
 
 ### 2. Spec
 - `node scripts/board.mjs stage <id> spec`
-- Spawn the **spec-writer** agent. Prompt: the job folder path, repo conventions, and "write spec.md".
+- Spawn the **spec-writer** agent. Prompt: the absolute job folder path, repo conventions, and "write spec.md". Specs are written against main in the main checkout; no worktree exists yet.
 - When it returns, confirm `spec.md` exists.
 - If `humanGates.approveSpec` is true: `stage <id> spec-approval`, show the user the spec summary and stop. Continue only when the user approves (then `stage <id> build`) or asks for changes (then `stage <id> spec` and respawn the spec-writer with their notes).
 
 ### 3. Build
 - `node scripts/board.mjs stage <id> build`
-- Create the branch from main: `git switch -c <branch> <mainBranch>`
-- Spawn the **builder** agent. Prompt: job folder, branch name, test command, "implement spec.md, commit on the branch, write build.md".
-- When it returns, run the test command yourself. If tests fail, respawn the builder once with the failure output. If they still fail: `stage <id> failed --note "<reason>"`, run step 7, then stop.
+- Get the path: `<worktree>` is the output of `node scripts/board.mjs worktree <id>`.
+- Create the worktree and branch from main: `git worktree add -b <branch> <worktree> <mainBranch>`. If it fails because `<branch>` already exists (a rerun), use `git worktree add <worktree> <branch>`. If that fails too: `stage <id> failed --note "<git error>"`, run step 7, then stop.
+- Spawn the **builder** agent. Prompt: absolute job folder, absolute worktree path, branch name, main branch, test command, "implement spec.md in the worktree, commit there on the branch, write build.md to the absolute job folder".
+- When it returns (here and after every rework), check its work:
+  1. `node scripts/board.mjs preflight` in the main checkout. If it exits 1, the builder wrote into the main checkout: stop and tell the user the paths it lists; do not clean them up yourself.
+  2. `git -C <worktree> status --porcelain` must print nothing (the builder commits all its work).
+  3. Run the test command with `<worktree>` as the working directory.
+  If check 2 or 3 fails, respawn the builder once with the output. If it still fails: `stage <id> failed --note "<reason>"`, run step 7, then stop.
 
 ### 4. Review (parallel)
 - `node scripts/board.mjs stage <id> review`
-- Get the diff once: `git diff <mainBranch>...<branch> --stat` and the list of changed files `git diff --name-only <mainBranch>...<branch>`.
-- Spawn **all reviewers from `config.reviewers` in a single message** so they run in parallel. Each prompt: job folder, branch, main branch, "review the diff against spec.md, write reviews/<your-name>.md".
+- Get the diff once: `git diff <mainBranch>...<branch> --stat` and the list of changed files `git diff --name-only <mainBranch>...<branch>`. Branches are shared, so this works from the main checkout.
+- Spawn **all reviewers from `config.reviewers` in a single message** so they run in parallel. Each prompt: absolute job folder, absolute worktree path, branch, main branch, test command, "review the diff against spec.md, read code and run tests in the worktree, write reviews/<your-name>.md in the job folder".
 - For each reviewer: `node scripts/board.mjs verdict <id> <reviewer>`
 - Then `node scripts/board.mjs decide-review <id>` and act on the answer:
   - `approve` -> step 5
-  - `rework` -> `node scripts/board.mjs rework <id> --note "<one line summary of requested changes>"`. If the output says the job moved to `needs-human`, run step 7, then step 6. Otherwise resume the **builder** with every review file that is not `pass` as input, then back to step 4.
+  - `rework` -> `node scripts/board.mjs rework <id> --note "<one line summary of requested changes>"`. If the output says the job moved to `needs-human`, run step 7, then step 6. Otherwise resume the **builder** in the same worktree with every review file that is not `pass` as input, run the checks from step 3, then back to step 4.
   - `needs-human` -> `stage <id> needs-human --note "<why>"`, run step 7, then step 6.
 
 Rework budget: `maxReworkCycles` (default 2). The board enforces it, you do not count by hand.
 
 ### 5. Approve
 - `node scripts/board.mjs stage <id> approve`
-- Spawn the **approver** agent. Prompt: job folder, branch, "decide merge or escalate, write approval.md".
+- Spawn the **approver** agent. Prompt: absolute job folder, absolute worktree path, branch, main branch, "decide merge or escalate, write approval.md in the job folder".
 - `node scripts/board.mjs decide-merge <id> <changed files...>` (same file list as step 4).
-  - `merged`: merge per `repo.mergeMode`:
-    - `local`: `git switch <mainBranch> && git merge --no-ff <branch> -m "factory: <title> (<id>)"`, then run the test command on main. If it fails, `git merge --abort` is no longer possible, so `git reset --keep ORIG_HEAD` (it keeps the uncommitted factory records; `--hard` would throw them away). If `reset --keep` reports an error, stop and tell the user: do not run step 7, and never retry with `--hard`. Otherwise `stage <id> needs-human --note "tests failed on main after merge"`, run step 7, then step 6.
+  - `merged`: merge per `repo.mergeMode`. Merges happen one at a time, from the main checkout, which is already on `<mainBranch>`:
+    - `local`: `git merge --no-ff <branch> -m "factory: <title> (<id>)"`. If the merge reports conflicts (another job merged first), run `git merge --abort`, then `stage <id> needs-human --note "conflicts with <mainBranch>"`, run step 7, then step 6; do not resolve conflicts yourself. Otherwise run the test command on main. If it fails, `git merge --abort` is no longer possible, so `git reset --keep ORIG_HEAD` (it keeps the uncommitted factory records; `--hard` would throw them away). If `reset --keep` reports an error, stop and tell the user: do not run step 7, and never retry with `--hard`. Otherwise `stage <id> needs-human --note "tests failed on main after merge"`, run step 7, then step 6.
     - `pr`: `git push -u origin <branch>` and `gh pr create --base <mainBranch> --head <branch> --title "<title>" --body-file factory/jobs/<id>/approval.md`.
     Then `node scripts/board.mjs stage <id> merged --note "<merge commit or PR url>"` and run step 7 (in both `local` and `pr` mode).
   - `needs-human`: `stage <id> needs-human --note "<why from the output>"`, run step 7, then step 6.
 
 ### 6. Park for a human
-Run this after step 7, even if step 7 stopped early (then also say the job's records are uncommitted). Tell the user, in three lines or fewer: job id, title, why it needs them, the branch the repo is actually on and that the work is on `<branch>`, and the two commands they can use (`/factory approve <id>` or `/factory rework <id> <note>`). Check the current branch with `git branch --show-current` instead of assuming it: it is `<mainBranch>` once step 7 has switched (or the repo was already on main, as on the rollback paths), and `<branch>` when step 7 stopped before switching away from the job branch (validate errors or a failed switch). Stop the loop for this job.
+Run this after step 7, even if step 7 stopped early (then also say the job's records are uncommitted). Tell the user, in three lines or fewer: job id, title, why it needs them, the branch the main checkout is on, that the work is on `<branch>` in `<worktree>`, and the two commands they can use (`/factory approve <id>` or `/factory rework <id> <note>`). Check the main checkout's branch with `git branch --show-current` instead of assuming it: it should be `<mainBranch>`; if it is anything else, say so plainly. Stop the loop for this job; other jobs carry on.
 
 ### 7. Record the job
-Every end state (`merged`, `needs-human`, `failed`) runs this step, so the tree is clean for the next `/factory` run. Run in this order:
+Every end state (`merged`, `needs-human`, `failed`) runs this step, so the main checkout holds no uncommitted records except those of jobs still in flight. Run in this order, from the main checkout:
 1. `node scripts/board.mjs validate`. If it reports errors, tell the user the errors and that the job's records are uncommitted, skip the rest of this step, and carry on with what follows step 7 on that path (step 6 for a `needs-human` job).
-2. `git switch <mainBranch>` (skip if already on main). The job's factory records are uncommitted, so they come along. If the switch fails, stop and tell the user (with the step 6 message for a `needs-human` job); do not use `git stash` or `--force`.
-3. `git add factory/board.json factory/backlog.md factory/jobs/<id>`
-4. `git commit -m "factory: record <id>"`. Skip the commit when nothing is staged (`git diff --cached --quiet` exits 0).
+2. `git add factory/board.json factory/backlog.md factory/jobs/<id>`. This commits the whole board, including other jobs' in-flight stages, which is fine. Never add another job's folder; it is committed in that job's own step 7.
+3. `git commit -m "factory: record <id>"`. Skip the commit when nothing is staged (`git diff --cached --quiet` exits 0).
+4. Only for `merged` and `failed`: `git worktree remove <worktree>` (skip it when `<worktree>` does not exist, for example a job that failed before step 3). If `git worktree remove` fails, stop and tell the user, and leave the worktree in place: never pass `--force`, never delete it by hand. A `needs-human` job keeps its worktree for `approve` and `rework`.
 
 Never push main yourself; the record commit stays on local main. In `pr` mode, job branches are cut from local main, so earlier record commits (and, after a human rework, this job's own) reach origin through a later job branch and its PR. That is expected.
 
+## Running several jobs
+
+`parallel.maxJobs` (default 1) caps the active jobs: stages `queued`, `spec`, `spec-approval`, `build`, `review`, `rework` and `approve` each hold a slot; `needs-human`, `merged` and `failed` do not. `node scripts/board.mjs slots` shows the count. Every job gets its own worktree, even at `maxJobs: 1`.
+
+Run the active jobs in **lockstep rounds**:
+1. For every active job, work out the agent it needs next (spec-writer, builder, all reviewers, or approver). Spawn every one of them, across all jobs, **in a single message**.
+2. When all have returned, handle each job's results **one job at a time, in id order**: board commands, git, preflight and tests, merges, step 7, step 6. Never handle two jobs' git work at once.
+3. A job that parks or ends leaves the round. Start the next round with the jobs still active.
+
+Merges only happen in step 2 of a round, one at a time, each followed by the test command on main, so every merge is tested on its own. A branch that no longer merges cleanly because another job merged first is parked by step 5 (`git merge --abort`, `needs-human`); the human recovers it with `/factory rework`.
+
+Run one orchestrator session per repo at a time. Two sessions would both write `factory/board.json`.
+
 ## Human commands
 
-**`/factory approve <id>`**: job must be `needs-human`. Merge per step 5's merge rules, then `stage <id> merged --note "human approved"` and run step 7. If tests fail on main after a `local` merge, run `git reset --keep ORIG_HEAD` (if it reports an error, stop and tell the user: do not run step 7, never retry with `--hard`). The job is already `needs-human`, so leave the stage as is (do not run `stage`; the board rejects `needs-human` to `needs-human`), then run step 7, then step 6.
+**`/factory approve <id>`**: job must be `needs-human`. Merge per step 5's merge rules, from the main checkout (no branch change). If the merge reports conflicts, run `git merge --abort`, leave the stage as is and tell the user to use `/factory rework <id> <note>`. If tests fail on main after a `local` merge, run `git reset --keep ORIG_HEAD` (if it reports an error, stop and tell the user: do not run step 7, never retry with `--hard`). The job is already `needs-human`, so leave the stage as is (do not run `stage`; the board rejects `needs-human` to `needs-human`), then run step 7, then step 6. On a clean merge with passing tests: `stage <id> merged --note "human approved"` and run step 7.
 
-**`/factory rework <id> <note>`**: job must be `needs-human`. Switch to the job branch and run `git merge --no-edit <mainBranch>` so the branch carries the job's record commit from step 7 (without it the switch drops `factory/jobs/<id>/` and the current board). If the merge reports conflicts, run `git merge --abort`, switch back to `<mainBranch>` and tell the user; do not resolve conflicts yourself. Then run `node scripts/board.mjs rework <id> --note "<note>"` (a human rework grants a fresh budget), resume the builder with the note plus the latest reviews, then continue from step 4.
+**`/factory rework <id> <note>`**: job must be `needs-human`, and a slot must be free (`node scripts/board.mjs slots`). Get `<worktree>` from `node scripts/board.mjs worktree <id>`. If that folder does not exist (for example a job parked before worktrees), create it with `git worktree add <worktree> <branch>`. Then run `git -C <worktree> merge --no-edit <mainBranch>` so the branch carries main's latest work, including this job's record commit and other jobs' merges. If the merge reports conflicts, run `git -C <worktree> merge --abort` and tell the user; do not resolve conflicts yourself. Then run `node scripts/board.mjs rework <id> --note "<note>"` (a human rework grants a fresh budget), resume the builder in `<worktree>` with the note plus the latest reviews, run the checks from step 3, then continue from step 4. The main checkout stays on `<mainBranch>` throughout.
 
 **`/factory approved [<id>]`**: run `node scripts/board.mjs export <id>` (or `node scripts/board.mjs export` with no id to export the most recently merged job). On exit 0, report the export folder path it prints. On a non-zero exit, relay the error to the user without changing the board or git state. An export writes only to the vault, so no commit is made for an export.
 
-**`/factory status`**: `node scripts/board.mjs show` and summarise as a short table: id, title, stage, rework count. With an id, show that job's history.
+**`/factory status`**: `node scripts/board.mjs show` and summarise as a short table: id, title, stage, rework count. With an id, show that job's history. `node scripts/board.mjs slots` adds the slot count.
 
 ## Rules
 
 - Only you write `factory/board.json`, and only through `scripts/board.mjs`. If a command errors, read the message: it names the allowed transitions. Do not work around it.
-- Agents get context from files, not from this conversation. Every agent prompt includes the job folder path.
+- Agents get context from files, not from this conversation. Every agent prompt includes the absolute job folder path and, from step 3 on, the absolute worktree path.
 - Never merge with failing tests. Never merge a job whose `decide-merge` says `needs-human`.
 - Never force-push, never rewrite main's history except the `git reset --keep ORIG_HEAD` rollback in step 5.
-- One job at a time in this version. Parallel jobs need git worktrees (see README roadmap).
+- The main checkout stays on `<mainBranch>`: never change its branch. Code changes happen only in job worktrees, and each worktree is removed only by step 7, without `--force`.
+- Up to `parallel.maxJobs` jobs at once, in lockstep rounds with serial git work (see "Running several jobs").
 - Only you commit `factory/board.json`, `factory/backlog.md` and `factory/jobs/`, and only in step 7. Agents never stage or commit them.
 - Step 7 runs `node scripts/board.mjs validate` after each job. If it reports errors, tell the user.
 - Keep the user posted with one line per stage change. The dashboard (`npm run dashboard`) shows the same board live.
