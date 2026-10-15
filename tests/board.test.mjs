@@ -506,3 +506,119 @@ test("exportDir: off when absent, null or blank; relative resolves against root"
   const abs = path.resolve("elsewhere", "vault");
   assert.equal(B.exportDir({ export: { obsidianDir: abs } }, root), abs);
 });
+
+// ---------- parallel jobs ----------
+
+// A board with one job per stage; createdAt runs in creation order unless overridden.
+function boardWithStages(stages) {
+  const board = B.emptyBoard();
+  stages.forEach((stage, i) => {
+    const at = new Date(NOW.getTime() + i * 1000).toISOString();
+    board.jobs.push({ id: `j-20261015-${String(i + 1).padStart(3, "0")}`, stage, createdAt: at, history: [{ stage, at }] });
+  });
+  return board;
+}
+
+test("ACTIVE_STAGES holds the seven slot-using stages and nothing else", () => {
+  assert.deepEqual(B.ACTIVE_STAGES, ["queued", "spec", "spec-approval", "build", "review", "rework", "approve"]);
+  for (const s of B.ACTIVE_STAGES) assert.ok(B.STAGES.includes(s), s);
+  for (const s of ["needs-human", "merged", "failed"]) assert.ok(!B.ACTIVE_STAGES.includes(s), s);
+});
+
+test("worktreeDir/worktreePath: default, relative, absolute and Windows-style values", () => {
+  const root = path.resolve("repo-root");
+  const id = "j-20261015-012";
+  assert.equal(B.worktreeDir({}, root), path.join(root, ".worktrees"));
+  assert.equal(B.worktreeDir(undefined, root), path.join(root, ".worktrees"));
+  assert.equal(B.worktreeDir({ parallel: { worktreeDir: "" } }, root), path.join(root, ".worktrees"));
+  assert.equal(B.worktreePath({}, root, id), path.join(root, ".worktrees", id));
+  assert.equal(B.worktreePath({ parallel: { worktreeDir: "trees" } }, root, id), path.join(root, "trees", id));
+  const abs = path.resolve("elsewhere", "wt");
+  assert.equal(B.worktreePath({ parallel: { worktreeDir: abs } }, root, id), path.join(abs, id));
+  const win = { parallel: { worktreeDir: "build\\trees" } };
+  assert.equal(B.worktreeDir(win, root), path.resolve(root, "build\\trees"));
+  if (process.platform === "win32") assert.equal(B.worktreePath(win, root, id), path.join(root, "build", "trees", id));
+});
+
+test("maxJobs: 1 when unset, integers >= 1 pass, anything else throws", () => {
+  assert.equal(B.maxJobs({}), 1);
+  assert.equal(B.maxJobs(undefined), 1);
+  assert.equal(B.maxJobs({ parallel: {} }), 1);
+  assert.equal(B.maxJobs({ parallel: { maxJobs: 1 } }), 1);
+  assert.equal(B.maxJobs({ parallel: { maxJobs: 3 } }), 3);
+  for (const bad of [0, -1, "2", 1.5, true, Number.NaN]) {
+    assert.throws(() => B.maxJobs({ parallel: { maxJobs: bad } }), /config\.parallel\.maxJobs must be an integer >= 1/, String(bad));
+  }
+});
+
+test("capacity counts active jobs oldest first; needs-human and terminal use no slot", () => {
+  const board = boardWithStages(["build", "needs-human", "merged", "failed", "queued", "review"]);
+  // Make the review job the oldest so order comes from createdAt, not board order.
+  board.jobs[5].createdAt = "2000-01-01T00:00:00.000Z";
+  assert.deepEqual(B.capacity(board, { parallel: { maxJobs: 4 } }), {
+    active: ["j-20261015-006", "j-20261015-001", "j-20261015-005"],
+    max: 4,
+    free: 1,
+  });
+  assert.deepEqual(B.capacity(board, {}), { active: ["j-20261015-006", "j-20261015-001", "j-20261015-005"], max: 1, free: 0 });
+  assert.deepEqual(B.capacity(B.emptyBoard(), {}), { active: [], max: 1, free: 1 });
+  assert.throws(() => B.capacity(board, { parallel: { maxJobs: 0 } }), /maxJobs/);
+});
+
+test("preflightErrors tolerates only in-flight factory records", () => {
+  // 001 build (active), 002 merged, 003 needs-human
+  const board = boardWithStages(["build", "merged", "needs-human"]);
+  const ok = [
+    "factory/board.json",
+    "factory/backlog.md",
+    "factory/jobs/j-20261015-001/spec.md",
+    "factory/jobs/j-20261015-001/reviews/code-reviewer.md",
+    "factory/jobs/j-20261015-001/",
+    "factory\\jobs\\j-20261015-001\\build.md",
+    "factory\\board.json",
+  ];
+  assert.deepEqual(B.preflightErrors(ok, board), []);
+  const bad = [
+    "factory/jobs/j-20261015-002/approval.md",
+    "factory/jobs/j-20261015-003/build.md",
+    "factory/jobs/j-20261015-0011/x.md",
+    "factory/config.json",
+    "src/x.js",
+    "src\\x.js",
+    ".worktrees/j-20261015-001/",
+    ".worktrees/j-20261015-001/src/x.js",
+    "factory/jobs/j-20261015-001.md",
+  ];
+  assert.deepEqual(B.preflightErrors([...ok, ...bad], board), bad);
+});
+
+test("preflightErrors flags board.json and backlog.md when no job is active", () => {
+  const board = boardWithStages(["merged", "needs-human", "failed"]);
+  const dirty = ["factory/board.json", "factory/backlog.md", "factory/jobs/j-20261015-002/build.md"];
+  assert.deepEqual(B.preflightErrors(dirty, board), dirty);
+  assert.deepEqual(B.preflightErrors(["factory/board.json"], B.emptyBoard()), ["factory/board.json"]);
+  assert.deepEqual(B.preflightErrors([], B.emptyBoard()), []);
+});
+
+test("parseGitStatusZ returns every path, both sides of a rename", () => {
+  const z = " M src/a.js\0?? factory/jobs/j-1/spec.md\0R  new name.js\0old name.js\0C  copy.js\0orig.js\0 D gone.js\0";
+  assert.deepEqual(B.parseGitStatusZ(z), [
+    "src/a.js",
+    "factory/jobs/j-1/spec.md",
+    "new name.js",
+    "old name.js",
+    "copy.js",
+    "orig.js",
+    "gone.js",
+  ]);
+  assert.deepEqual(B.parseGitStatusZ(""), []);
+});
+
+test("validateBoard reports a bad parallel.maxJobs; configs without parallel stay valid", () => {
+  const { board } = freshJob();
+  assert.deepEqual(B.validateBoard(board, config), []);
+  assert.deepEqual(B.validateBoard(board, { ...config, parallel: { maxJobs: 2 } }), []);
+  for (const bad of [0, "2", 1.5]) {
+    assert.deepEqual(B.validateBoard(board, { ...config, parallel: { maxJobs: bad } }), ["config.parallel.maxJobs must be an integer >= 1"]);
+  }
+});

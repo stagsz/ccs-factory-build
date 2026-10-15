@@ -20,7 +20,7 @@ test("SKILL.md says how to stop safely when a git step in the record flow fails"
   const skill = read("skills", "factory", "SKILL.md");
   assert.ok(skill.includes("If `reset --keep` reports an error, stop and tell the user"));
   assert.ok(skill.includes("never retry with `--hard`"));
-  assert.ok(skill.includes("If the switch fails, stop and tell the user"));
+  assert.ok(skill.includes("If `git worktree remove` fails, stop and tell the user"));
   assert.ok(skill.includes("git merge --abort"));
   assert.ok(skill.includes("do not resolve conflicts yourself"));
   assert.ok(skill.includes("leave the stage as is (do not run `stage`"));
@@ -55,4 +55,40 @@ test("builder.md forbids touching the backlog and committing factory files", () 
   const builder = read("agents", "builder.md");
   assert.ok(builder.includes("factory/backlog.md"));
   assert.ok(builder.includes("Never stage or commit anything under `factory/`"));
+  assert.ok(builder.includes("worktree"));
+});
+
+test("SKILL.md runs every job in its own worktree and never switches the main checkout", () => {
+  const skill = read("skills", "factory", "SKILL.md");
+  assert.ok(skill.includes("git worktree add -b <branch> <worktree> <mainBranch>"));
+  assert.ok(skill.includes("node scripts/board.mjs preflight"));
+  assert.ok(skill.includes("node scripts/board.mjs slots"));
+  assert.ok(skill.includes("node scripts/board.mjs worktree <id>"));
+  assert.ok(skill.includes("parallel.maxJobs"));
+  assert.ok(skill.includes("/factory next [<n>]"));
+  assert.ok(skill.includes("## Running several jobs"));
+  assert.ok(!skill.includes("git switch"));
+  assert.ok(!skill.includes("worktree remove --force"));
+  assert.ok(!skill.includes("One job at a time in this version"));
+});
+
+test("SKILL.md tells the user what happens on a park, a full board, a short backlog and a spec gate", () => {
+  const skill = read("skills", "factory", "SKILL.md");
+  const step6 = skill.slice(skill.indexOf("### 6. Park for a human"), skill.indexOf("### 7. Record the job"));
+  assert.ok(step6.includes("Work is on <branch> in <worktree>; the main checkout is on <current branch>."));
+  assert.ok(step6.includes("merges <mainBranch> into <branch> first"));
+  assert.ok(skill.includes("No free slot (active: <ids>)."));
+  assert.ok(skill.includes("Started <k> of <n>: <ids>."));
+  assert.ok(skill.includes("it leaves the round but keeps its slot while it waits, and the other jobs carry on"));
+  assert.ok(skill.includes("exits non-zero without starting a merge"));
+  assert.ok(skill.includes("its worktree (if any) was left in place"));
+  assert.ok(skill.includes('wrap the path in double quotes (`git -C "<worktree>" ...`)'));
+});
+
+test("every configured reviewer and the approver work in the job's worktree", () => {
+  const config = JSON.parse(fs.readFileSync(path.join(source, "..", "factory", "config.json"), "utf8"));
+  for (const name of [...config.reviewers, "approver"]) {
+    const text = read("agents", `${name}.md`);
+    assert.ok(text.includes("worktree"), `${name}.md must mention the worktree`);
+  }
 });

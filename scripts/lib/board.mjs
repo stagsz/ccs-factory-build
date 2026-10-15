@@ -309,7 +309,79 @@ export function validateBoard(board, config) {
       if (!VERDICTS.includes(v)) errors.push(`${j.id}: bad verdict ${r}=${v}`);
     }
   }
+  try {
+    maxJobs(config);
+  } catch {
+    errors.push(MAX_JOBS_ERROR);
+  }
   return errors;
+}
+
+// ---------- parallel jobs ----------
+
+// Stages that hold a slot under parallel.maxJobs. needs-human and the terminal
+// stages do not: a parked job waits for a person, not for the orchestrator.
+export const ACTIVE_STAGES = ["queued", "spec", "spec-approval", "build", "review", "rework", "approve"];
+
+const MAX_JOBS_ERROR = "config.parallel.maxJobs must be an integer >= 1";
+
+// The folder that holds every job's worktree. Relative values resolve against root.
+export function worktreeDir(config, root) {
+  return path.resolve(root, config?.parallel?.worktreeDir || ".worktrees");
+}
+
+// One job's worktree, named by id (not branch slug) to keep Windows paths short.
+export function worktreePath(config, root, id) {
+  return path.join(worktreeDir(config, root), id);
+}
+
+// The job cap. Unset (absent, undefined or null) means 1.
+export function maxJobs(config) {
+  const v = config?.parallel?.maxJobs;
+  if (v === undefined || v === null) return 1;
+  if (!Number.isInteger(v) || v < 1) throw new Error(`${MAX_JOBS_ERROR}, got ${JSON.stringify(v)}.`);
+  return v;
+}
+
+// Active job ids (oldest first), the cap and the free slots (never below 0).
+export function capacity(board, config) {
+  const byAge = (a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0);
+  const active = (board.jobs ?? [])
+    .filter((j) => ACTIVE_STAGES.includes(j.stage))
+    .sort(byAge)
+    .map((j) => j.id);
+  const max = maxJobs(config);
+  return { active, max, free: Math.max(0, max - active.length) };
+}
+
+// Paths out of `git status --porcelain=v1 -z`. A rename or copy entry carries a
+// second NUL-separated field (the source path); both paths are returned.
+export function parseGitStatusZ(text) {
+  const fields = String(text ?? "").split("\0");
+  const out = [];
+  for (let i = 0; i < fields.length; i++) {
+    const entry = fields[i];
+    if (entry.length < 4) continue;
+    const xy = entry.slice(0, 2);
+    out.push(entry.slice(3));
+    if (/[RC]/.test(xy) && i + 1 < fields.length && fields[i + 1]) out.push(fields[++i]);
+  }
+  return out;
+}
+
+// The dirty paths the pre-flight check must refuse. Only factory/board.json,
+// factory/backlog.md and factory/jobs/<id>/** of active jobs are tolerated, and
+// only while at least one job is active. Accepts "\" and "/" separators.
+export function preflightErrors(dirtyPaths, board) {
+  const active = new Set((board?.jobs ?? []).filter((j) => ACTIVE_STAGES.includes(j.stage)).map((j) => j.id));
+  const allowed = (p) => {
+    if (!active.size) return false;
+    const norm = String(p).replace(/\\/g, "/").replace(/\/+$/, "");
+    if (norm === "factory/board.json" || norm === "factory/backlog.md") return true;
+    const m = /^factory\/jobs\/([^/]+)(?:\/.*)?$/.exec(norm);
+    return Boolean(m && active.has(m[1]));
+  };
+  return dirtyPaths.filter((p) => !allowed(p));
 }
 
 // ---------- listing ----------

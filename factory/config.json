@@ -19,6 +19,10 @@
   },
   "reviewers": ["security-reviewer", "ux-reviewer", "ui-design-reviewer", "code-reviewer"],
   "maxReworkCycles": 2,
+  "parallel": {
+    "maxJobs": 1,
+    "worktreeDir": ".worktrees"
+  },
   "export": {
     "obsidianDir": "C:\\Users\\staff\\ObsidianVaults\\CCS Factory build"
   },

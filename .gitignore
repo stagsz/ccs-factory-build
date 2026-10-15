@@ -9,3 +9,6 @@ Thumbs.db
 # local tool state
 .claude/settings.local.json
 .omc/
+
+# per-job git worktrees (parallel.worktreeDir)
+.worktrees/

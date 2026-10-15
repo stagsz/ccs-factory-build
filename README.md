@@ -67,19 +67,31 @@ Commit the generated `.claude/` folder so the factory travels with the repo. The
 
 ```
 /factory add a health check endpoint that returns {"status":"ok"}
+/factory next 3
 ```
+
+Each job builds in its own git worktree under `parallel.worktreeDir` (default `.worktrees/`), so the main checkout stays on main. `/factory next 3` starts up to three backlog jobs, as far as `parallel.maxJobs` allows (default 1, one job at a time). Raise it in `factory/config.json` to run several jobs side by side.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `/factory <feature>` | New job from the request, run through the line |
-| `/factory next` | Next `- [ ]` item in `factory/backlog.md`. Markers: `[ ]` queued, `[~]` taken (line ends with `(<job-id>)`), `[x]` merged, `[!]` failed. The board CLI closes `[~]` to `[x]` or `[!]` when the job ends |
+| `/factory <feature>` | New job from the request, run through the line (needs a free slot under `parallel.maxJobs`) |
+| `/factory next [<n>]` | Next `<n>` (default 1) `- [ ]` items in `factory/backlog.md`, up to the free slots under `parallel.maxJobs`. Markers: `[ ]` queued, `[~]` taken (line ends with `(<job-id>)`), `[x]` merged, `[!]` failed. The board CLI closes `[~]` to `[x]` or `[!]` when the job ends |
 | `/factory approve <job-id>` | Merge a job parked as needs-human |
 | `/factory rework <job-id> <note>` | Send a job back to the builder with a note |
 | `/factory status [<job-id>]` | Board summary, or one job's history |
 
-The board CLI is also usable by hand: `npm run board -- show`, `npm run board -- validate`.
+The board CLI is also usable by hand: `npm run board -- show`, `npm run board -- validate`, `npm run board -- slots` (active jobs against `parallel.maxJobs`), `npm run board -- worktree <job-id>` (a job's worktree path) and `npm run board -- preflight` (is the tree clean apart from in-flight factory records?).
+
+### Running several jobs
+
+| Key | Default | Meaning |
+|---|---|---|
+| `parallel.maxJobs` | `1` | Jobs that may be active at once. Stages `queued` to `approve` hold a slot; `needs-human`, `merged` and `failed` do not |
+| `parallel.worktreeDir` | `.worktrees` | Where job worktrees live, one folder per job id. Relative paths resolve against the repo root |
+
+The orchestrator runs active jobs in lockstep rounds: it spawns every agent due across all jobs in one message, then handles each job's results (board, git, tests, merge) one job at a time. Merges into main stay serial, each followed by the test command. A branch that no longer merges cleanly is parked as needs-human; `/factory rework` merges main into it.
 
 ## Install into an existing repo
 
@@ -88,6 +100,7 @@ The board CLI is also usable by hand: `npm run board -- show`, `npm run board --
    - `repo.testCommand`, `repo.mainBranch`, optional `lintCommand` and `buildCommand`
    - `repo.mergeMode`: `local` merges with `--no-ff`; `pr` pushes the branch and opens a PR with `gh`
    - `risk.alwaysEscalatePaths`: the paths in this repo that must never auto-merge
+   - `parallel.maxJobs` and `parallel.worktreeDir` (see Running several jobs). Add the worktree dir (default `.worktrees/`) to the target repo's `.gitignore`; `npm run board -- preflight` reports it if git does not ignore it. On Windows, deep repos may need `git config core.longpaths true`. A repo that needs dependencies installed per checkout (e.g. `node_modules`) must install them in each new worktree.
    - `agents.*.model` if you want different models (also update the agent's frontmatter `model:` in `claude-setup/agents/` and re-run `npm run setup -- --force`)
 3. Add a line to the target repo's `CLAUDE.md` pointing at `/factory`.
 4. Commit, then run `/factory` on something small first.
@@ -101,13 +114,12 @@ The board CLI is also usable by hand: `npm run board -- show`, `npm run board --
 
 ## Limitations
 
-- One job at a time. Agents share the working tree.
+- Parallel jobs run in lockstep rounds driven by one orchestrator session: a round waits for its slowest agent, and only one `/factory` session may run per repo at a time.
 - Resuming the builder with its earlier context only works within one Claude Code session; across sessions it restarts from the files.
 - The approver judges from the diff and reports; it does not run the app.
 
 ## Roadmap
 
-- **Git worktrees** so several jobs run in parallel, one worktree per job
 - **GitHub issues as intake**: label an issue, the factory picks it up
 - **Agent teams** for direct reviewer-to-builder conversation instead of file round trips
 - **Diagnostics on intake**: pull stack traces and logs (e.g. Sentry over MCP) into `request.md` for bug jobs
