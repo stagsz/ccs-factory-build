@@ -18,6 +18,8 @@ function setup() {
   // The real config names the user's vault. No test may export there: switch it off
   // here, and export tests point it at a fresh temp dir with setVault().
   setVault(root, null);
+  // The real config's job cap is the user's choice; tests start from the defaults.
+  setParallel(root, { maxJobs: 1, worktreeDir: ".worktrees" });
   fs.writeFileSync(path.join(root, "factory", "backlog.md"), "# Backlog\n- [ ] Health check :: Add GET /health\n");
   const run = (...args) =>
     execFileSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
