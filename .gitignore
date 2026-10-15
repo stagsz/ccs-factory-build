@@ -5,3 +5,7 @@ Thumbs.db
 *.log
 .env
 .env.*
+
+# local tool state
+.claude/settings.local.json
+.omc/
