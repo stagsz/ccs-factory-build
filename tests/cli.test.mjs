@@ -75,7 +75,7 @@ test("risk floor overrides an approver who wants to merge", () => {
   assert.match(decision.why, /package\.json/);
 });
 
-const allCommands = ["init", "new", "next", "stage", "verdict", "decide-review", "rework", "risk", "decide-merge", "show", "validate", "help"];
+const allCommands = ["init", "new", "next", "stage", "verdict", "decide-review", "rework", "risk", "decide-merge", "show", "list", "validate", "help"];
 
 test("help, --help and -h print the same usage and exit 0 before init", () => {
   const { root, run } = setup();
@@ -137,6 +137,28 @@ test("names inherited from Object.prototype are unknown commands", () => {
     );
   }
   assert.ok(!fs.existsSync(path.join(root, "factory", "board.json")));
+});
+
+test("list on a repo with no board.json prints No jobs. and creates nothing", () => {
+  const { root, run } = setup();
+  assert.equal(run("list"), "No jobs.");
+  assert.equal(fs.existsSync(path.join(root, "factory", "board.json")), false);
+});
+
+test("list prints a header and one row per job in creation order, read-only", () => {
+  const { root, run } = setup();
+  run("init");
+  const first = run("new", "First job");
+  const second = run("new", "Second", "job", "title");
+  run("stage", first, "spec");
+  const boardFile = path.join(root, "factory", "board.json");
+  const before = fs.readFileSync(boardFile);
+  const lines = run("list").split(/\r?\n/);
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /^ID\s+STAGE\s+REWORK\s+TITLE$/);
+  assert.match(lines[1], new RegExp(`^${first}\\s+spec\\s+0\\s+First job$`));
+  assert.match(lines[2], new RegExp(`^${second}\\s+queued\\s+0\\s+Second job title$`));
+  assert.ok(fs.readFileSync(boardFile).equals(before), "list must not rewrite board.json");
 });
 
 test("CLI reports illegal moves and missing agent output as errors", () => {

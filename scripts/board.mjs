@@ -20,6 +20,7 @@ const USAGE = `Usage: node scripts/board.mjs <command> [args]
   risk <id> <file> [<file> ...]          deterministic risk floor for the changed files
   decide-merge <id> <file> [...]         read approval.md + risk floor, print merged | needs-human
   show [<id>]                            print the board or one job as JSON
+  list                                   print one line per job (id, stage, rework, title)
   validate                               check board.json integrity
   help (also --help, -h)                 print this usage`;
 
@@ -139,6 +140,10 @@ const commands = {
   show([id]) {
     const board = B.loadBoard(root);
     out(id ? B.findJob(board, id) : board);
+  },
+
+  list() {
+    out(B.formatJobList(B.loadBoard(root)));
   },
 
   validate() {

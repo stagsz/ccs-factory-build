@@ -291,3 +291,15 @@ export function validateBoard(board, config) {
   }
   return errors;
 }
+
+// ---------- listing ----------
+
+// One line per job (id, stage, rework, title), oldest first. Pure: sorts a copy.
+export function formatJobList(board) {
+  if (!board.jobs.length) return "No jobs.";
+  const byAge = (a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0);
+  const rows = [...board.jobs].sort(byAge).map((j) => [j.id, j.stage, String(j.rework), j.title]);
+  const table = [["ID", "STAGE", "REWORK", "TITLE"], ...rows];
+  const widths = [0, 1, 2].map((c) => Math.max(...table.map((r) => r[c].length)));
+  return table.map((r) => [...widths.map((w, c) => r[c].padEnd(w)), r[3]].join("  ")).join("\n");
+}
