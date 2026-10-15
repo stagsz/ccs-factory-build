@@ -89,6 +89,11 @@ const commands = {
     const board = B.loadBoard(root);
     const job = B.setStage(board, id, stage, note);
     B.saveBoard(board, root);
+    if (B.TERMINAL.has(job.stage) && job.source === "backlog" && fs.existsSync(P.backlog)) {
+      const md = fs.readFileSync(P.backlog, "utf8");
+      const closed = B.closeBacklogItem(md, job.id, job.stage === "merged" ? "x" : "!");
+      if (closed !== md) fs.writeFileSync(P.backlog, closed, "utf8");
+    }
     out(`${job.id} -> ${job.stage}`);
   },
 

@@ -53,13 +53,54 @@ test("full line through the CLI: next -> rework once -> merged", () => {
   fs.writeFileSync(path.join(root, "factory", "jobs", id, "approval.md"), "RISK: low\nDECISION: merge\n");
   const decision = JSON.parse(run("decide-merge", id, "src/routes/health.js", "tests/health.test.js"));
   assert.equal(decision.action, "merged");
-  run("stage", id, "merged", "--note", "abc123");
+  assert.equal(run("stage", id, "merged", "--note", "abc123"), `${id} -> merged`);
+  assert.equal(
+    fs.readFileSync(path.join(root, "factory", "backlog.md"), "utf8"),
+    `# Backlog\n- [x] Health check :: Add GET /health (${id})\n`,
+  );
 
   const job = JSON.parse(run("show", id));
   assert.equal(job.stage, "merged");
   assert.equal(job.rework, 1);
   assert.equal(job.risk.level, "low");
   assert.equal(run("validate"), "Board is valid.");
+});
+
+test("a backlog job that fails closes its line with [!]", () => {
+  const { root, run } = setup();
+  const backlog = path.join(root, "factory", "backlog.md");
+  run("init");
+  const id = run("next");
+  assert.equal(run("stage", id, "spec"), `${id} -> spec`);
+  assert.equal(fs.readFileSync(backlog, "utf8"), `# Backlog\n- [~] Health check :: Add GET /health (${id})\n`);
+  assert.equal(run("stage", id, "failed"), `${id} -> failed`);
+  assert.equal(fs.readFileSync(backlog, "utf8"), `# Backlog\n- [!] Health check :: Add GET /health (${id})\n`);
+});
+
+test("a cli job reaching failed leaves backlog.md byte-identical", () => {
+  const { root, run } = setup();
+  const backlog = path.join(root, "factory", "backlog.md");
+  run("init");
+  const id = run("new", "Manual", "job");
+  // A [~] line ending with this id must still be ignored for a cli-source job.
+  fs.writeFileSync(backlog, `# Backlog\r\n- [~] Lookalike (${id})\r\n- [ ] Health check\r\n`);
+  const before = fs.readFileSync(backlog);
+  run("stage", id, "spec");
+  assert.equal(run("stage", id, "failed"), `${id} -> failed`);
+  assert.ok(fs.readFileSync(backlog).equals(before));
+});
+
+test("stage failed succeeds and creates no backlog.md when the file is missing", () => {
+  const { root, run } = setup();
+  const backlog = path.join(root, "factory", "backlog.md");
+  run("init");
+  const id = run("next");
+  fs.rmSync(backlog);
+  const r = spawnSync(process.execPath, [cli, "stage", id, "failed"], { cwd: root, encoding: "utf8" });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), `${id} -> failed`);
+  assert.equal(fs.existsSync(backlog), false);
+  assert.equal(JSON.parse(run("show", id)).stage, "failed");
 });
 
 test("risk floor overrides an approver who wants to merge", () => {

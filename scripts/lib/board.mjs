@@ -253,6 +253,8 @@ export function decideMerge(approval, riskFloor) {
 // ---------- backlog ----------
 
 // Backlog items are markdown checkboxes: "- [ ] Title :: optional longer request"
+// Markers: "[ ]" queued, "[~]" taken by a job (line ends with "(<job-id>)"),
+// "[x]" job merged, "[!]" job failed. Only "[ ]" lines are picked up here.
 export function nextBacklogItem(markdown) {
   const lines = markdown.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
@@ -270,6 +272,24 @@ export function markBacklogItem(markdown, item, jobId) {
   const lines = markdown.split(/\r?\n/);
   lines[item.index] = lines[item.index].replace("[ ]", "[~]") + ` (${jobId})`;
   return lines.join(eol);
+}
+
+// Close the "[~]" line of a finished job: mark "x" (merged) or "!" (failed).
+// Only "[~]" lines whose trimmed end is exactly "(<jobId>)" change, and only their
+// checkbox. Returns the input string itself when nothing matches.
+export function closeBacklogItem(markdown, jobId, mark) {
+  if (mark !== "x" && mark !== "!") throw new Error(`Backlog mark must be "x" or "!", got ${JSON.stringify(mark)}.`);
+  const eol = markdown.includes("\r\n") ? "\r\n" : "\n";
+  const lines = markdown.split(/\r?\n/);
+  const suffix = `(${jobId})`;
+  let changed = false;
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*[-*]\s+)\[~\]/.exec(lines[i]);
+    if (!m || !lines[i].trimEnd().endsWith(suffix)) continue;
+    lines[i] = `${m[1]}[${mark}]${lines[i].slice(m[0].length)}`;
+    changed = true;
+  }
+  return changed ? lines.join(eol) : markdown;
 }
 
 // ---------- validation ----------
