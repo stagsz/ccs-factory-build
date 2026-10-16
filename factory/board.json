@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-16T10:12:29.544Z",
+  "updatedAt": "2026-10-16T10:13:27.229Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -821,10 +821,13 @@
       "title": "Show the slot count on the dashboard",
       "request": "dashboard/index.html already fetches /board.json and /config.json. Add a small \"Active n/max\" indicator to the dashboard header, where max is config.parallel.maxJobs (1 when unset) and n counts jobs in the active stages queued, spec, spec-approval, build, review, rework and approve (needs-human, merged and failed use no slot), matching ACTIVE_STAGES in scripts/lib/board.mjs. Keep the existing look (reuse the header's existing styles, no new dependencies). Add a drift guard to tests/dashboard.test.mjs, like the existing STAGES guard, asserting the dashboard's active-stage list equals the exported ACTIVE_STAGES. Only dashboard/index.html and tests/dashboard.test.mjs should change.",
       "source": "backlog",
-      "stage": "approve",
+      "stage": "merged",
       "branch": "factory/j-20261016-002-show-the-slot-count-on-the-dashboard",
       "rework": 0,
-      "risk": null,
+      "risk": {
+        "level": "low",
+        "reasons": []
+      },
       "verdicts": {
         "security-reviewer": "pass",
         "ux-reviewer": "pass",
@@ -832,7 +835,7 @@
         "code-reviewer": "pass"
       },
       "createdAt": "2026-10-16T09:59:18.591Z",
-      "updatedAt": "2026-10-16T10:10:36.713Z",
+      "updatedAt": "2026-10-16T10:13:27.228Z",
       "history": [
         {
           "stage": "queued",
@@ -858,6 +861,11 @@
           "stage": "approve",
           "at": "2026-10-16T10:10:36.713Z",
           "note": ""
+        },
+        {
+          "stage": "merged",
+          "at": "2026-10-16T10:13:27.228Z",
+          "note": "merge commit 9781a91"
         }
       ]
     },
