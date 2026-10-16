@@ -656,6 +656,44 @@ test("preflight lists both paths of a staged rename", () => {
   }
 });
 
+test("preflight outside a git repo prints one clear error line", () => {
+  const noGitDir = () => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "ccs-factory-nogit-")));
+  const dir = noGitDir();
+  const elsewhere = noGitDir();
+  try {
+    // Both dirs sit in os.tmpdir(): one ceiling stops git finding a parent repo for either.
+    const env = { ...gitEnv(), GIT_CEILING_DIRECTORIES: path.dirname(dir) };
+    delete env.FACTORY_ROOT;
+    const viaCwd = spawnSync(process.execPath, [cli, "preflight"], { cwd: dir, encoding: "utf8", env });
+    const viaEnv = spawnSync(process.execPath, [cli, "preflight"], {
+      cwd: elsewhere,
+      encoding: "utf8",
+      env: { ...env, FACTORY_ROOT: dir },
+    });
+    for (const r of [viaCwd, viaEnv]) {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.equal(r.stdout, "");
+      assert.equal(r.stderr.trim(), `error: preflight needs a git repository at ${dir}`);
+      assert.doesNotMatch(r.stderr, /fatal|Command failed/);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(elsewhere, { recursive: true, force: true });
+  }
+});
+
+test("preflight keeps git's own error for other git failures", () => {
+  const { root } = gitRepo();
+  try {
+    const r = spawnSync(process.execPath, [cli, "preflight"], { cwd: path.join(root, ".git"), encoding: "utf8", env: gitEnv() });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /^error: Command failed/);
+    assert.ok(!r.stderr.includes("needs a git repository"), r.stderr);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a job worktree at the printed path keeps preflight clean when .worktrees/ is ignored", () => {
   const { root, run, git } = gitRepo();
   try {

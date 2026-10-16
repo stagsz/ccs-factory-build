@@ -241,11 +241,17 @@ const commands = {
   },
 
   preflight() {
-    const status = execFileSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let status;
+    try {
+      status = execFileSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      if (err.status === 128 && notAGitRepo()) throw new Error(`preflight needs a git repository at ${root}`);
+      throw err;
+    }
     const errors = B.preflightErrors(B.parseGitStatusZ(status), B.loadBoard(root));
     if (errors.length) {
       out(["Uncommitted changes outside in-flight factory records. Commit or remove them first:", ...errors.map((p) => `- ${p}`)].join("\n"));
@@ -253,6 +259,23 @@ const commands = {
     } else out("Clean apart from in-flight factory records.");
   },
 };
+
+// Called only after `git status` exits 128, which git also uses for dubious ownership,
+// a corrupt repo or a cwd inside .git. Confirm the root is outside any repo, with the
+// C locale so git's message is the English one; anything else keeps git's own error.
+function notAGitRepo() {
+  try {
+    execFileSync("git", ["rev-parse", "--git-dir"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, LC_ALL: "C", LANGUAGE: "" },
+    });
+    return false;
+  } catch (probe) {
+    return probe.status === 128 && /not a git repository/i.test(String(probe.stderr ?? ""));
+  }
+}
 
 const [cmd, ...args] = process.argv.slice(2);
 if (HELP.has(cmd)) {
