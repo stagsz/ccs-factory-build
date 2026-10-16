@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-16T06:53:14.791Z",
+  "updatedAt": "2026-10-16T10:12:29.544Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -758,6 +758,151 @@
           "stage": "merged",
           "at": "2026-10-16T06:53:14.790Z",
           "note": "human approved"
+        }
+      ]
+    },
+    {
+      "id": "j-20261016-001",
+      "title": "Split the step 5 local merge bullet into sub-bullets",
+      "request": "In claude-setup/skills/factory/SKILL.md, step 5 `local` is one long bullet holding the merge command, the MERGE_HEAD rule for any non-zero `git merge` exit, the `<git line>` definition, and the test-on-main / `reset --keep ORIG_HEAD` rollback. Split it into nested sub-bullets (merge command; on non-zero exit: MERGE_HEAD set / MERGE_HEAD unset; `<git line>` definition; on exit 0: tests on main and rollback) so each rule sits in the branch it belongs to; in particular the \"if `git merge --abort` fails, stop and do not run step 7\" rule must sit inside the MERGE_HEAD-set branch, before that branch runs step 7. Wording change only: keep every rule and its meaning, keep the phrases tests/skill.test.mjs pins (update the test only where a pinned substring has to move or change), and do not edit .claude/. Depends on j-20261015-013 being merged first.",
+      "source": "backlog",
+      "stage": "needs-human",
+      "branch": "factory/j-20261016-001-split-the-step-5-local-merge-bullet-into",
+      "rework": 0,
+      "risk": {
+        "level": "high",
+        "reasons": [
+          "sensitive paths: claude-setup/skills/factory/SKILL.md"
+        ]
+      },
+      "verdicts": {
+        "security-reviewer": "pass",
+        "ux-reviewer": "pass",
+        "ui-design-reviewer": "pass",
+        "code-reviewer": "pass"
+      },
+      "createdAt": "2026-10-16T09:59:18.494Z",
+      "updatedAt": "2026-10-16T10:12:29.543Z",
+      "history": [
+        {
+          "stage": "queued",
+          "at": "2026-10-16T09:59:18.494Z",
+          "note": "created from backlog"
+        },
+        {
+          "stage": "spec",
+          "at": "2026-10-16T09:59:29.721Z",
+          "note": ""
+        },
+        {
+          "stage": "build",
+          "at": "2026-10-16T10:01:20.799Z",
+          "note": ""
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-16T10:06:23.552Z",
+          "note": ""
+        },
+        {
+          "stage": "approve",
+          "at": "2026-10-16T10:10:36.582Z",
+          "note": ""
+        },
+        {
+          "stage": "needs-human",
+          "at": "2026-10-16T10:12:29.543Z",
+          "note": "approver escalated: claude-setup/** is an escalate path"
+        }
+      ]
+    },
+    {
+      "id": "j-20261016-002",
+      "title": "Show the slot count on the dashboard",
+      "request": "dashboard/index.html already fetches /board.json and /config.json. Add a small \"Active n/max\" indicator to the dashboard header, where max is config.parallel.maxJobs (1 when unset) and n counts jobs in the active stages queued, spec, spec-approval, build, review, rework and approve (needs-human, merged and failed use no slot), matching ACTIVE_STAGES in scripts/lib/board.mjs. Keep the existing look (reuse the header's existing styles, no new dependencies). Add a drift guard to tests/dashboard.test.mjs, like the existing STAGES guard, asserting the dashboard's active-stage list equals the exported ACTIVE_STAGES. Only dashboard/index.html and tests/dashboard.test.mjs should change.",
+      "source": "backlog",
+      "stage": "approve",
+      "branch": "factory/j-20261016-002-show-the-slot-count-on-the-dashboard",
+      "rework": 0,
+      "risk": null,
+      "verdicts": {
+        "security-reviewer": "pass",
+        "ux-reviewer": "pass",
+        "ui-design-reviewer": "pass",
+        "code-reviewer": "pass"
+      },
+      "createdAt": "2026-10-16T09:59:18.591Z",
+      "updatedAt": "2026-10-16T10:10:36.713Z",
+      "history": [
+        {
+          "stage": "queued",
+          "at": "2026-10-16T09:59:18.591Z",
+          "note": "created from backlog"
+        },
+        {
+          "stage": "spec",
+          "at": "2026-10-16T09:59:29.917Z",
+          "note": ""
+        },
+        {
+          "stage": "build",
+          "at": "2026-10-16T10:01:21.541Z",
+          "note": ""
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-16T10:06:23.789Z",
+          "note": ""
+        },
+        {
+          "stage": "approve",
+          "at": "2026-10-16T10:10:36.713Z",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "j-20261016-003",
+      "title": "Friendly preflight error outside a git repo",
+      "request": "`node scripts/board.mjs preflight` shells out to `git status` and, when FACTORY_ROOT (or cwd) is not inside a git work tree, prints git's raw \"fatal: not a git repository\" output. Catch that case in scripts/board.mjs and print one clear line instead, e.g. \"error: preflight needs a git repository at <root>\", exiting 1 as before; other git failures keep their current behaviour. Add a CLI test in tests/cli.test.mjs that runs preflight in a plain temp dir (no git init) and checks the message and exit code. Only scripts/board.mjs and tests/cli.test.mjs should change.",
+      "source": "backlog",
+      "stage": "approve",
+      "branch": "factory/j-20261016-003-friendly-preflight-error-outside-a-git-r",
+      "rework": 0,
+      "risk": null,
+      "verdicts": {
+        "security-reviewer": "pass",
+        "ux-reviewer": "pass",
+        "ui-design-reviewer": "pass",
+        "code-reviewer": "pass"
+      },
+      "createdAt": "2026-10-16T09:59:18.682Z",
+      "updatedAt": "2026-10-16T10:10:36.818Z",
+      "history": [
+        {
+          "stage": "queued",
+          "at": "2026-10-16T09:59:18.682Z",
+          "note": "created from backlog"
+        },
+        {
+          "stage": "spec",
+          "at": "2026-10-16T09:59:30.110Z",
+          "note": ""
+        },
+        {
+          "stage": "build",
+          "at": "2026-10-16T10:01:22.118Z",
+          "note": ""
+        },
+        {
+          "stage": "review",
+          "at": "2026-10-16T10:06:24.038Z",
+          "note": ""
+        },
+        {
+          "stage": "approve",
+          "at": "2026-10-16T10:10:36.818Z",
+          "note": ""
         }
       ]
     }
