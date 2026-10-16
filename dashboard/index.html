@@ -66,6 +66,7 @@
 
 <script>
   const STAGES = ["queued", "spec", "spec-approval", "build", "review", "rework", "approve", "needs-human", "merged", "failed"];
+  const ACTIVE_STAGES = ["queued", "spec", "spec-approval", "build", "review", "rework", "approve"];
   const LABEL = { "spec-approval": "spec approval", "needs-human": "needs human" };
   let board = { jobs: [] };
   let config = { reviewers: [] };
@@ -90,7 +91,10 @@
     const open = board.jobs.filter((j) => !["merged", "failed"].includes(j.stage)).length;
     const human = board.jobs.filter((j) => j.stage === "needs-human").length;
     const merged = board.jobs.filter((j) => j.stage === "merged").length;
-    document.getElementById("counts").innerHTML = `<span><b>${open}</b> in progress</span><span><b>${human}</b> need you</span><span><b>${merged}</b> merged</span>`;
+    const n = board.jobs.filter((j) => ACTIVE_STAGES.includes(j.stage)).length;
+    const v = config?.parallel?.maxJobs;
+    const max = Number.isInteger(v) && v >= 1 ? v : 1;
+    document.getElementById("counts").innerHTML = `<span><b>${open}</b> in progress</span><span><b>${human}</b> need you</span><span><b>${merged}</b> merged</span><span title="Jobs holding a slot (parallel.maxJobs)">Active <b>${n}/${max}</b></span>`;
     document.getElementById("meta").textContent = `Board updated ${time(board.updatedAt)} · refreshes every 3 s`;
   }
 
