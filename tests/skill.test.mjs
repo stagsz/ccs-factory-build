@@ -95,7 +95,16 @@ test("SKILL.md decides every failed git merge by MERGE_HEAD, not by git's messag
   assert.ok(skill.includes("double quotes, `$` and backticks removed"));
   assert.ok(skill.includes("If `git merge --abort` fails, stop and tell the user"));
   assert.ok(skill.includes("and backslashes removed too"));
-  assert.ok(skill.includes("In either branch never go on to the tests or `merged`. If `git merge --abort` fails"));
+  assert.ok(skill.includes("In either branch never go on to the tests or `merged`."));
+  const step5 = skill.slice(skill.indexOf("### 5. Approve"), skill.indexOf("### 6. Park for a human"));
+  const started = step5.indexOf("If it succeeds, a merge started: run `git merge --abort`");
+  const abortFails = step5.indexOf("If `git merge --abort` fails, stop and tell the user");
+  const conflictNote = step5.indexOf("conflict or rejected merge: <git line>");
+  const refused = step5.indexOf("If it fails, nothing started");
+  assert.ok(started >= 0 && started < abortFails && abortFails < conflictNote && conflictNote < refused);
+  const localLine = step5.split("\n").find((line) => line.startsWith("    - `local`:"));
+  assert.ok(localLine !== undefined);
+  assert.ok(!localLine.includes("MERGE_HEAD"));
   assert.ok(skill.includes("do not resolve conflicts yourself. If the merge exits 0, run `node scripts/board.mjs rework"));
   assert.ok(!skill.includes("In both cases never go on to the tests"));
   assert.ok(!skill.includes("If the merge reports conflicts"));
