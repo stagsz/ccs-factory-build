@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-16T10:13:27.229Z",
+  "updatedAt": "2026-10-16T10:14:15.193Z",
   "jobs": [
     {
       "id": "j-20261015-001",
@@ -874,10 +874,13 @@
       "title": "Friendly preflight error outside a git repo",
       "request": "`node scripts/board.mjs preflight` shells out to `git status` and, when FACTORY_ROOT (or cwd) is not inside a git work tree, prints git's raw \"fatal: not a git repository\" output. Catch that case in scripts/board.mjs and print one clear line instead, e.g. \"error: preflight needs a git repository at <root>\", exiting 1 as before; other git failures keep their current behaviour. Add a CLI test in tests/cli.test.mjs that runs preflight in a plain temp dir (no git init) and checks the message and exit code. Only scripts/board.mjs and tests/cli.test.mjs should change.",
       "source": "backlog",
-      "stage": "approve",
+      "stage": "merged",
       "branch": "factory/j-20261016-003-friendly-preflight-error-outside-a-git-r",
       "rework": 0,
-      "risk": null,
+      "risk": {
+        "level": "low",
+        "reasons": []
+      },
       "verdicts": {
         "security-reviewer": "pass",
         "ux-reviewer": "pass",
@@ -885,7 +888,7 @@
         "code-reviewer": "pass"
       },
       "createdAt": "2026-10-16T09:59:18.682Z",
-      "updatedAt": "2026-10-16T10:10:36.818Z",
+      "updatedAt": "2026-10-16T10:14:15.191Z",
       "history": [
         {
           "stage": "queued",
@@ -911,6 +914,11 @@
           "stage": "approve",
           "at": "2026-10-16T10:10:36.818Z",
           "note": ""
+        },
+        {
+          "stage": "merged",
+          "at": "2026-10-16T10:14:15.191Z",
+          "note": "merge commit 5ab2abf"
         }
       ]
     }
